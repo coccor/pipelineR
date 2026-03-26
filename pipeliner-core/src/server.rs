@@ -74,6 +74,7 @@ impl PipelineRServer {
 }
 
 /// Parse a pipeline config from a request's config oneof.
+#[allow(clippy::result_large_err)]
 fn parse_config_input(
     config_toml: Option<String>,
     config_path: Option<String>,

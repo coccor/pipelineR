@@ -1,0 +1,7 @@
+[package]
+name = "pipeliner-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pipeliner-core = { path = "../pipeliner-core" }

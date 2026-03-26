@@ -1,0 +1,10 @@
+[package]
+name = "pipeliner-core"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+chrono = "0.4"
+indexmap = "2"
+thiserror = "2"
+winnow = "0.7"

@@ -1,6 +1,6 @@
 //! Conversion functions between `pipeliner_core` record/value types and protobuf types.
 
-use crate::pipeliner::v1 as proto;
+use pipeliner_proto::pipeliner::v1 as proto;
 use chrono::TimeZone;
 use pipeliner_core::record::{
     Record as CoreRecord, RecordBatch as CoreBatch, Value as CoreValue,

@@ -6,5 +6,9 @@ edition = "2021"
 [dependencies]
 chrono = "0.4"
 indexmap = "2"
+pipeliner-proto = { path = "../pipeliner-proto" }
 thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
+tokio-stream = "0.1"
+tonic = "0.12"
 winnow = "0.7"

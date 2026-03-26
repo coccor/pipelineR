@@ -6,6 +6,5 @@ pub mod pipeliner {
     }
 }
 
-pub mod convert;
 
 pub use pipeliner::v1::*;

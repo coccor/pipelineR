@@ -1,6 +1,7 @@
 //! Plugin SDK for pipelineR — provides traits, error types, and helpers for source/sink plugins.
 
 pub mod config;
+pub mod convert;
 pub mod error;
 pub mod grpc_sink;
 pub mod grpc_source;

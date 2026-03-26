@@ -65,6 +65,12 @@ enum Commands {
         #[arg(long = "param", value_parser = parse_param)]
         params: Vec<(String, String)>,
     },
+    /// Start the gRPC server (sidecar mode).
+    Serve {
+        /// Port to listen on.
+        #[arg(long, default_value = "50051")]
+        port: u16,
+    },
     /// Plugin management commands.
     Plugins {
         #[command(subcommand)]
@@ -120,6 +126,7 @@ async fn main() -> ExitCode {
         Commands::Partitions { pipeline, params } => {
             cmd_partitions(&pipeline, &params, &cli.plugins_file).await
         }
+        Commands::Serve { port } => cmd_serve(port, &cli.plugins_file).await,
         Commands::Plugins { command } => match command {
             PluginsCommands::List => cmd_plugins_list(&cli.plugins_file),
         },
@@ -412,6 +419,24 @@ fn cmd_plugins_list(plugins_file: &Path) -> ExitCode {
         for (name, entry) in &registry.plugins {
             println!("{name:<20} {path:<40} {desc}", path = entry.path, desc = entry.description);
         }
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// Start the gRPC server in sidecar mode.
+async fn cmd_serve(port: u16, plugins_file: &Path) -> ExitCode {
+    let server = match pipeliner_core::server::PipelineRServer::from_registry_path(plugins_file) {
+        Ok(s) => s,
+        Err(e) => {
+            error!("failed to load plugin registry: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    if let Err(e) = pipeliner_core::server::start_server(server, port).await {
+        error!("server error: {e}");
+        return ExitCode::from(1);
     }
 
     ExitCode::SUCCESS

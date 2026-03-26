@@ -1,0 +1,34 @@
+syntax = "proto3";
+package pipeliner.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Value {
+  oneof kind {
+    bool null_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    double float_value = 4;
+    string string_value = 5;
+    bytes bytes_value = 6;
+    google.protobuf.Timestamp timestamp_value = 7;
+    ArrayValue array_value = 8;
+    MapValue map_value = 9;
+  }
+}
+
+message ArrayValue {
+  repeated Value values = 1;
+}
+
+message MapValue {
+  map<string, Value> fields = 1;
+}
+
+message Record {
+  map<string, Value> fields = 1;
+}
+
+message RecordBatch {
+  repeated Record records = 1;
+}

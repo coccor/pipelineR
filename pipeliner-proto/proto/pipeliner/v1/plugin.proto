@@ -1,0 +1,88 @@
+syntax = "proto3";
+package pipeliner.v1;
+
+import "pipeliner/v1/common.proto";
+import "pipeliner/v1/records.proto";
+
+message SourceDescriptor {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+}
+
+message SourceConfig {
+  string config_json = 1;
+}
+
+message ExtractRequest {
+  SourceConfig config = 1;
+  RuntimeParams params = 2;
+}
+
+message ExtractResponse {
+  RecordBatch batch = 1;
+  string watermark = 2;
+}
+
+message DiscoverSchemaRequest {
+  SourceConfig config = 1;
+  RuntimeParams params = 2;
+}
+
+message DiscoverPartitionsRequest {
+  SourceConfig config = 1;
+  RuntimeParams params = 2;
+}
+
+service SourcePlugin {
+  rpc Describe(Empty) returns (SourceDescriptor);
+  rpc Validate(SourceConfig) returns (ValidationResult);
+  rpc DiscoverSchema(DiscoverSchemaRequest) returns (SchemaResponse);
+  rpc DiscoverPartitions(DiscoverPartitionsRequest) returns (PartitionsResponse);
+  rpc Extract(ExtractRequest) returns (stream ExtractResponse);
+}
+
+message SinkDescriptor {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+}
+
+message SinkConfig {
+  string config_json = 1;
+}
+
+message SchemaRequirementResponse {
+  enum Requirement {
+    FLEXIBLE = 0;
+    MATCH_SOURCE = 1;
+    FIXED = 2;
+  }
+  Requirement requirement = 1;
+  repeated ColumnSchema fixed_schema = 2;
+}
+
+message LoadRequest {
+  oneof payload {
+    LoadMetadata metadata = 1;
+    RecordBatch batch = 2;
+  }
+}
+
+message LoadMetadata {
+  SinkConfig config = 1;
+  SchemaResponse schema = 2;
+}
+
+message LoadResult {
+  int64 rows_written = 1;
+  int64 rows_errored = 2;
+  string error_message = 3;
+}
+
+service SinkPlugin {
+  rpc Describe(Empty) returns (SinkDescriptor);
+  rpc Validate(SinkConfig) returns (ValidationResult);
+  rpc SchemaRequirement(Empty) returns (SchemaRequirementResponse);
+  rpc Load(stream LoadRequest) returns (LoadResult);
+}

@@ -1,0 +1,33 @@
+syntax = "proto3";
+package pipeliner.v1;
+
+message ColumnSchema {
+  string name = 1;
+  string data_type = 2;
+  bool nullable = 3;
+  string description = 4;
+}
+
+message Partition {
+  string key = 1;
+  map<string, string> params = 2;
+}
+
+message RuntimeParams {
+  map<string, string> params = 1;
+}
+
+message ValidationResult {
+  bool valid = 1;
+  repeated string errors = 2;
+}
+
+message SchemaResponse {
+  repeated ColumnSchema columns = 1;
+}
+
+message PartitionsResponse {
+  repeated Partition partitions = 1;
+}
+
+message Empty {}

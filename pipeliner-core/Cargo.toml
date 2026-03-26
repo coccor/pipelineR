@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-stream = "0.3"
 chrono = "0.4"
 indexmap = "2"
 pipeliner-proto = { path = "../pipeliner-proto" }
@@ -13,8 +14,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
-tokio-stream = { version = "0.1", features = ["net"] }
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tokio-util = "0.7"
+uuid = { version = "1", features = ["v4"] }
 toml = "0.8"
 tonic = "0.12"
 tracing = "0.1"

@@ -88,7 +88,7 @@ pub struct SinkSpec {
 // ---------------------------------------------------------------------------
 
 /// Plugin registry loaded from `plugins.toml`.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Clone)]
 pub struct PluginRegistry {
     /// Map of plugin name → plugin entry.
     #[serde(default)]

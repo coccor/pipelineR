@@ -35,8 +35,9 @@ struct RunState {
     status: pb::RunStatus,
     /// Cancellation token to stop the pipeline.
     cancel: CancellationToken,
-    /// Event sender for WatchRun streaming.
-    events: RunEventSender,
+    /// Event sender for WatchRun streaming. Set to `None` after the run completes
+    /// to close the broadcast channel and end all WatchRun streams.
+    events: Option<RunEventSender>,
     /// When the run was started.
     started_at: Instant,
 }
@@ -283,7 +284,7 @@ impl PipelineR for PipelineRServer {
         let run_state = Arc::new(Mutex::new(RunState {
             status: initial_status,
             cancel: cancel.clone(),
-            events: event_sender.clone(),
+            events: Some(event_sender.clone()),
             started_at: Instant::now(),
         }));
 
@@ -310,6 +311,10 @@ impl PipelineR for PipelineRServer {
             }
             .await;
 
+            // Drop the local event_sender clone so the broadcast channel can close
+            // after we drop state.events below.
+            drop(event_sender);
+
             let mut state = run_state.lock().await;
             let duration_ms = state.started_at.elapsed().as_millis() as i64;
 
@@ -331,11 +336,14 @@ impl PipelineR for PipelineRServer {
                         ..Default::default()
                     });
 
-                    // Emit completion event.
-                    state.events.emit(RunEvent::StageTransition {
-                        stage: "pipeline".to_string(),
-                        status: "completed".to_string(),
-                    });
+                    // Emit completion event then drop sender to close WatchRun streams.
+                    if let Some(ref e) = state.events {
+                        e.emit(RunEvent::StageTransition {
+                            stage: "pipeline".to_string(),
+                            status: "completed".to_string(),
+                        });
+                    }
+                    state.events = None;
                 }
                 Ok((Err(e), mut spawned)) => {
                     spawned.kill_all().await;
@@ -352,10 +360,13 @@ impl PipelineR for PipelineRServer {
                         ..Default::default()
                     });
 
-                    state.events.emit(RunEvent::Error {
-                        stage: "pipeline".to_string(),
-                        message: e.to_string(),
-                    });
+                    if let Some(ref ev) = state.events {
+                        ev.emit(RunEvent::Error {
+                            stage: "pipeline".to_string(),
+                            message: e.to_string(),
+                        });
+                    }
+                    state.events = None;
                 }
                 Err(e) => {
                     state.status.state = pb::RunState::Failed as i32;
@@ -365,10 +376,13 @@ impl PipelineR for PipelineRServer {
                         ..Default::default()
                     });
 
-                    state.events.emit(RunEvent::Error {
-                        stage: "pipeline".to_string(),
-                        message: e.to_string(),
-                    });
+                    if let Some(ref ev) = state.events {
+                        ev.emit(RunEvent::Error {
+                            stage: "pipeline".to_string(),
+                            message: e.to_string(),
+                        });
+                    }
+                    state.events = None;
                 }
             }
         });
@@ -394,12 +408,12 @@ impl PipelineR for PipelineRServer {
             .clone();
 
         let state = run_state.lock().await;
-        let rx = state.events.subscribe();
         let current_state = state.status.state;
+        let rx = state.events.as_ref().map(|e| e.subscribe());
         drop(state);
 
-        // If the run is already finished, return the final status immediately.
-        if current_state != pb::RunState::Running as i32 {
+        // If the run is already finished or events are gone, return final status immediately.
+        if current_state != pb::RunState::Running as i32 || rx.is_none() {
             let final_state = run_state.lock().await;
             let completed_event = pb::RunEvent {
                 run_id: run_id.clone(),
@@ -409,19 +423,19 @@ impl PipelineR for PipelineRServer {
             return Ok(Response::new(Box::pin(stream)));
         }
 
+        let rx = rx.expect("checked above");
         let run_id_for_stream = run_id.clone();
         let run_state_for_final = run_state.clone();
 
-        let event_stream = BroadcastStream::new(rx)
-            .filter_map(move |result| {
-                let run_id = run_id_for_stream.clone();
-                match result {
-                    Ok(evt) => Some(Ok(to_proto_event(&run_id, &evt))),
-                    Err(_) => None,
-                }
-            });
+        let event_stream = BroadcastStream::new(rx).filter_map(move |result| {
+            let run_id = run_id_for_stream.clone();
+            match result {
+                Ok(evt) => Some(Ok(to_proto_event(&run_id, &evt))),
+                Err(_) => None,
+            }
+        });
 
-        // When the event stream ends, emit a final completed event with the run status.
+        // When the event stream ends (sender dropped), emit a final completed event.
         let run_id_final = run_id.clone();
         let final_event_stream = async_stream::stream! {
             tokio::pin!(event_stream);

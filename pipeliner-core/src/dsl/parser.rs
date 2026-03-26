@@ -1,10 +1,10 @@
-use winnow::combinator::{alt, opt, preceded, separated};
+use winnow::combinator::{alt, delimited, opt, preceded, separated};
 use winnow::error::ContextError;
 use winnow::prelude::*;
 use winnow::token::{any, take_while};
 use winnow::Result as WResult;
 
-use crate::dsl::ast::{Expr, Op, PathSegment};
+use crate::dsl::ast::{Expr, Op, PathSegment, TransformStep};
 use crate::dsl::error::EvalError;
 use crate::record::Value;
 
@@ -31,6 +31,27 @@ pub fn parse_expr(input: &str) -> Result<Expr, EvalError> {
         )));
     }
     Ok(expr)
+}
+
+/// Parse a full transform step such as `set(.amount, to_float(.amount))`.
+///
+/// Returns an [`EvalError::ParseError`] if the input is not a valid step.
+pub fn parse_step(input: &str) -> Result<TransformStep, EvalError> {
+    let input = input.trim();
+    if input.is_empty() {
+        return Err(EvalError::ParseError("empty input".to_string()));
+    }
+    let mut s = input;
+    let step = transform_step
+        .parse_next(&mut s)
+        .map_err(|e| EvalError::ParseError(format!("{e}")))?;
+    let remaining = s.trim();
+    if !remaining.is_empty() {
+        return Err(EvalError::ParseError(format!(
+            "unexpected trailing input: {remaining}"
+        )));
+    }
+    Ok(step)
 }
 
 // ---------------------------------------------------------------------------
@@ -138,20 +159,13 @@ fn ident(input: &mut &str) -> WResult<String> {
 fn path_segment(input: &mut &str) -> WResult<PathSegment> {
     alt((
         // Indexed: [0]
-        delimited_index,
+        delimited("[", index_segment, "]"),
         // Quoted field: .["key"]
         preceded(".", quoted_field_segment),
         // Named field: .foo
         preceded(".", named_field_segment),
     ))
     .parse_next(input)
-}
-
-fn delimited_index(input: &mut &str) -> WResult<PathSegment> {
-    "[".parse_next(input)?;
-    let seg = index_segment.parse_next(input)?;
-    "]".parse_next(input)?;
-    Ok(seg)
 }
 
 fn index_segment(input: &mut &str) -> WResult<PathSegment> {
@@ -446,6 +460,36 @@ fn null_coalesce(input: &mut &str) -> WResult<Expr> {
 
 fn expr_top(input: &mut &str) -> WResult<Expr> {
     null_coalesce.parse_next(input)
+}
+
+// ---------------------------------------------------------------------------
+// Transform step
+// ---------------------------------------------------------------------------
+
+fn transform_step(input: &mut &str) -> WResult<TransformStep> {
+    ws.parse_next(input)?;
+    let function = ident.parse_next(input)?;
+    ws.parse_next(input)?;
+    "(".parse_next(input)?;
+    ws.parse_next(input)?;
+
+    let args: Vec<Expr> = opt(separated(
+        1..,
+        |i: &mut &str| {
+            ws.parse_next(i)?;
+            let e = expr_top.parse_next(i)?;
+            ws.parse_next(i)?;
+            Ok(e)
+        },
+        ",",
+    ))
+    .parse_next(input)?
+    .unwrap_or_default();
+
+    ws.parse_next(input)?;
+    ")".parse_next(input)?;
+    ws.parse_next(input)?;
+    Ok(TransformStep { function, args })
 }
 
 // ---------------------------------------------------------------------------
@@ -747,5 +791,65 @@ mod tests {
                 Box::new(Expr::FieldPath(vec![PathSegment::Field("c".to_string())]))
             )
         );
+    }
+
+    // === Task 6: Transform step parsing ===
+
+    #[test]
+    fn parse_step_set() {
+        let step = parse_step("set(.amount, to_float(.amount))").unwrap();
+        assert_eq!(step.function, "set");
+        assert_eq!(step.args.len(), 2);
+    }
+
+    #[test]
+    fn parse_step_rename() {
+        let step = parse_step("rename(.old_name, .new_name)").unwrap();
+        assert_eq!(step.function, "rename");
+        assert_eq!(step.args.len(), 2);
+    }
+
+    #[test]
+    fn parse_step_where() {
+        let step = parse_step("where(.amount > 0.0)").unwrap();
+        assert_eq!(step.function, "where");
+        assert_eq!(step.args.len(), 1);
+    }
+
+    #[test]
+    fn parse_step_remove() {
+        let step = parse_step("remove(.internal_field)").unwrap();
+        assert_eq!(step.function, "remove");
+        assert_eq!(step.args.len(), 1);
+    }
+
+    #[test]
+    fn parse_step_complex() {
+        let step = parse_step(
+            "set(.amount_usd, if .currency == \"USD\" { .amount } else { .amount * .exchange_rate })",
+        )
+        .unwrap();
+        assert_eq!(step.function, "set");
+        assert_eq!(step.args.len(), 2);
+        assert!(matches!(step.args[1], Expr::IfElse(_, _, _)));
+    }
+
+    #[test]
+    fn parse_step_null_coalesce_in_set() {
+        let step =
+            parse_step("set(.merchant_name, .metadata.merchant.name ?? \"Unknown\")").unwrap();
+        assert_eq!(step.function, "set");
+        assert_eq!(step.args.len(), 2);
+        assert!(matches!(step.args[1], Expr::NullCoalesce(_, _)));
+    }
+
+    #[test]
+    fn parse_step_unclosed_paren() {
+        assert!(parse_step("set(.x").is_err());
+    }
+
+    #[test]
+    fn parse_step_empty() {
+        assert!(parse_step("").is_err());
     }
 }

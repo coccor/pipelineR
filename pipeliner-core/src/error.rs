@@ -30,4 +30,8 @@ pub enum PipelineError {
     /// An internal channel was closed unexpectedly.
     #[error("channel closed: {0}")]
     ChannelClosed(String),
+
+    /// A configuration error.
+    #[error("config error: {0}")]
+    Config(#[from] crate::config::ConfigError),
 }

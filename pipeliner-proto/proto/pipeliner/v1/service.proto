@@ -1,0 +1,154 @@
+syntax = "proto3";
+package pipeliner.v1;
+
+import "pipeliner/v1/common.proto";
+
+// Orchestrator-facing gRPC service.
+// Exposed on a configurable port (default: 50051) when running in server mode.
+service PipelineR {
+  // Discover the schema of the source defined in the pipeline config.
+  rpc DiscoverSchema(PipelineDiscoverSchemaRequest) returns (SchemaResponse);
+
+  // Discover partitions for the source defined in the pipeline config.
+  rpc DiscoverPartitions(PipelineDiscoverPartitionsRequest) returns (PartitionsResponse);
+
+  // Submit a pipeline run. Returns immediately with a run ID.
+  rpc RunPipeline(RunPipelineRequest) returns (RunPipelineResponse);
+
+  // Stream pipeline events in real-time.
+  rpc WatchRun(WatchRunRequest) returns (stream RunEvent);
+
+  // Poll for current status of a pipeline run.
+  rpc GetRunStatus(GetRunStatusRequest) returns (RunStatus);
+
+  // Cancel a running pipeline.
+  rpc CancelRun(CancelRunRequest) returns (CancelRunResponse);
+
+  // Validate a pipeline config without executing.
+  rpc ValidatePipeline(ValidatePipelineRequest) returns (ValidationResult);
+
+  // Health check (K8s liveness/readiness probes).
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// --- Request/Response messages ---
+
+message PipelineConfigInput {
+  oneof config {
+    string config_toml = 1;
+    string config_path = 2;
+  }
+  map<string, string> params = 3;
+}
+
+message PipelineDiscoverSchemaRequest {
+  oneof config {
+    string config_toml = 1;
+    string config_path = 2;
+  }
+  map<string, string> params = 3;
+}
+
+message PipelineDiscoverPartitionsRequest {
+  oneof config {
+    string config_toml = 1;
+    string config_path = 2;
+  }
+  map<string, string> params = 3;
+}
+
+message RunPipelineRequest {
+  oneof config {
+    string config_toml = 1;
+    string config_path = 2;
+  }
+  map<string, string> params = 3;
+}
+
+message RunPipelineResponse {
+  string run_id = 1;
+}
+
+message WatchRunRequest {
+  string run_id = 1;
+}
+
+message GetRunStatusRequest {
+  string run_id = 1;
+}
+
+message CancelRunRequest {
+  string run_id = 1;
+}
+
+message CancelRunResponse {
+  bool acknowledged = 1;
+}
+
+message ValidatePipelineRequest {
+  oneof config {
+    string config_toml = 1;
+    string config_path = 2;
+  }
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum ServingStatus {
+    SERVING = 0;
+    NOT_SERVING = 1;
+  }
+  ServingStatus status = 1;
+}
+
+// --- Run status and events ---
+
+message RunStatus {
+  string run_id = 1;
+  RunState state = 2;
+  string error_message = 3;
+  RunMetrics metrics = 4;
+  string watermark = 5;
+}
+
+enum RunState {
+  RUNNING = 0;
+  COMPLETED = 1;
+  FAILED = 2;
+  CANCELLED = 3;
+}
+
+message RunMetrics {
+  int64 records_read = 1;
+  int64 records_written = 2;
+  int64 records_dropped = 3;
+  int64 transform_errors = 4;
+  int64 duration_ms = 5;
+}
+
+message RunEvent {
+  string run_id = 1;
+  oneof event {
+    StageTransition stage_transition = 2;
+    BatchProgress batch_progress = 3;
+    ErrorEvent error = 4;
+    RunStatus completed = 5;
+  }
+}
+
+message StageTransition {
+  string stage = 1;
+  string status = 2;
+}
+
+message BatchProgress {
+  string stage = 1;
+  int64 batch_number = 2;
+  int64 records_in_batch = 3;
+}
+
+message ErrorEvent {
+  string stage = 1;
+  string message = 2;
+}

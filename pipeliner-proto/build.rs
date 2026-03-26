@@ -7,6 +7,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "proto/pipeliner/v1/common.proto",
                 "proto/pipeliner/v1/records.proto",
                 "proto/pipeliner/v1/plugin.proto",
+                "proto/pipeliner/v1/service.proto",
             ],
             &["proto"],
         )?;

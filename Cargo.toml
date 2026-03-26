@@ -5,4 +5,5 @@ members = [
     "pipeliner-cli",
     "pipeliner-sdk",
     "pipeliner-proto",
+    "plugins/pipeliner-plugin-file",
 ]

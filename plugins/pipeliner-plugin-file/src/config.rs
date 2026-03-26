@@ -1,4 +1,4 @@
-//! Configuration types for the file source plugin.
+//! Configuration types for the file plugin (source and sink).
 
 use serde::Deserialize;
 
@@ -9,6 +9,14 @@ pub enum FileFormat {
     Csv,
     Json,
     Parquet,
+}
+
+/// Sink-supported file formats (CSV and JSON only — no Parquet sink in file plugin).
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SinkFileFormat {
+    Csv,
+    Json,
 }
 
 /// CSV-specific options.
@@ -54,6 +62,18 @@ pub struct FileSourceConfig {
     pub path: String,
     /// File format.
     pub format: FileFormat,
+    /// CSV-specific options (only used when `format` is `csv`).
+    #[serde(default)]
+    pub csv: Option<CsvOptions>,
+}
+
+/// Top-level configuration for the file sink plugin.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileSinkConfig {
+    /// Output file path.
+    pub path: String,
+    /// Output file format.
+    pub format: SinkFileFormat,
     /// CSV-specific options (only used when `format` is `csv`).
     #[serde(default)]
     pub csv: Option<CsvOptions>,

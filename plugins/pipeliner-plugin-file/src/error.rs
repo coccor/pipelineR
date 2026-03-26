@@ -1,4 +1,4 @@
-//! Error types for the file source plugin.
+//! Error types for the file plugin (source and sink).
 
 use thiserror::Error;
 
@@ -14,4 +14,15 @@ pub enum FileSourceError {
     /// No files matched the provided path or glob pattern.
     #[error("no files matched pattern: {0}")]
     NoFilesMatched(String),
+}
+
+/// Errors produced by the file sink plugin.
+#[derive(Debug, Error)]
+pub enum FileSinkError {
+    /// An I/O error occurred writing the output file.
+    #[error("io error: {0}")]
+    Io(String),
+    /// A serialization error occurred.
+    #[error("serialization error: {0}")]
+    Serialization(String),
 }

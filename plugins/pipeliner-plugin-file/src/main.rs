@@ -1,10 +1,10 @@
-//! Binary entry point for the file source plugin.
+//! Binary entry point for the file plugin (source + sink).
 
-use pipeliner_plugin_file::FileSource;
+use pipeliner_plugin_file::{FileSink, FileSource};
 
 #[tokio::main]
 async fn main() {
-    pipeliner_sdk::run_source_plugin(FileSource)
+    pipeliner_sdk::run_plugin(FileSource, FileSink)
         .await
-        .expect("file source plugin failed");
+        .expect("file plugin failed");
 }

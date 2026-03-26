@@ -1142,6 +1142,7 @@ dependencies = [
  "indexmap 2.13.0",
  "pipeliner-proto",
  "pipeliner-sdk",
+ "prost-types",
  "serde_json",
  "tempfile",
  "thiserror",

@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tokio::sync::{Mutex, RwLock};
 use tokio_stream::wrappers::BroadcastStream;
@@ -70,6 +70,52 @@ impl PipelineRServer {
     pub fn from_registry_path(path: &Path) -> Result<Self, crate::config::ConfigError> {
         let registry = load_connector_registry(path)?;
         Ok(Self::new(registry))
+    }
+
+    /// Wait for all in-flight runs to complete, with a timeout.
+    ///
+    /// After the timeout expires, any remaining runs are cancelled. This is used
+    /// during graceful shutdown to drain active pipeline runs before the server
+    /// stops accepting requests.
+    pub async fn drain_runs(&self, timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let runs = self.runs.read().await;
+            let in_flight: Vec<Arc<Mutex<RunState>>> = {
+                let mut active = Vec::new();
+                for run_state in runs.values() {
+                    let state = run_state.lock().await;
+                    if state.status.state == pb::RunState::Running as i32 {
+                        active.push(run_state.clone());
+                    }
+                }
+                active
+            };
+            drop(runs);
+
+            if in_flight.is_empty() {
+                tracing::info!("all in-flight runs completed");
+                break;
+            }
+
+            if Instant::now() >= deadline {
+                tracing::warn!(
+                    count = in_flight.len(),
+                    "shutdown timeout reached, cancelling remaining runs"
+                );
+                for run_state in &in_flight {
+                    let state = run_state.lock().await;
+                    state.cancel.cancel();
+                }
+                break;
+            }
+
+            tracing::info!(
+                count = in_flight.len(),
+                "waiting for in-flight runs to complete"
+            );
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
     }
 }
 
@@ -331,6 +377,7 @@ impl PipelineR for PipelineRServer {
                     state.status.state = pb::RunState::Completed as i32;
                     state.status.watermark = pipeline_result.watermark;
                     state.status.metrics = Some(pb::RunMetrics {
+                        records_read: pipeline_result.records_read,
                         records_written: total_written,
                         records_dropped: total_errored,
                         duration_ms,
@@ -401,6 +448,9 @@ impl PipelineR for PipelineRServer {
         request: Request<WatchRunRequest>,
     ) -> Result<Response<Self::WatchRunStream>, Status> {
         let run_id = request.into_inner().run_id;
+        if run_id.is_empty() {
+            return Err(Status::invalid_argument("run_id must not be empty"));
+        }
 
         let runs = self.runs.read().await;
         let run_state = runs
@@ -459,6 +509,9 @@ impl PipelineR for PipelineRServer {
         request: Request<GetRunStatusRequest>,
     ) -> Result<Response<pb::RunStatus>, Status> {
         let run_id = request.into_inner().run_id;
+        if run_id.is_empty() {
+            return Err(Status::invalid_argument("run_id must not be empty"));
+        }
 
         let runs = self.runs.read().await;
         let run_state = runs
@@ -475,6 +528,9 @@ impl PipelineR for PipelineRServer {
         request: Request<CancelRunRequest>,
     ) -> Result<Response<CancelRunResponse>, Status> {
         let run_id = request.into_inner().run_id;
+        if run_id.is_empty() {
+            return Err(Status::invalid_argument("run_id must not be empty"));
+        }
 
         let runs = self.runs.read().await;
         let run_state = runs
@@ -515,9 +571,11 @@ impl PipelineR for PipelineRServer {
     }
 }
 
-/// Start the PipelineR gRPC server on the given port.
+/// Start the PipelineR gRPC server on the given port with graceful shutdown.
 ///
-/// Binds to `127.0.0.1:<port>` and serves until the process is terminated.
+/// Binds to `127.0.0.1:<port>` and serves until SIGTERM or Ctrl-C is received.
+/// On shutdown signal, the server stops accepting new requests and waits up to
+/// 30 seconds for in-flight pipeline runs to complete before cancelling them.
 pub async fn start_server(
     server: PipelineRServer,
     port: u16,
@@ -526,14 +584,46 @@ pub async fn start_server(
 
     tracing::info!(%addr, "starting PipelineR gRPC server");
 
+    let server_arc = Arc::new(server);
+    let server_for_drain = server_arc.clone();
+
+    let svc = pipeliner_proto::pipeliner::v1::pipeline_r_server::PipelineRServer::from_arc(
+        server_arc,
+    )
+    .max_decoding_message_size(64 * 1024 * 1024)
+    .max_encoding_message_size(64 * 1024 * 1024);
+
     tonic::transport::Server::builder()
-        .add_service(
-            pipeliner_proto::pipeliner::v1::pipeline_r_server::PipelineRServer::new(server)
-                .max_decoding_message_size(64 * 1024 * 1024)
-                .max_encoding_message_size(64 * 1024 * 1024),
-        )
-        .serve(addr)
+        .add_service(svc)
+        .serve_with_shutdown(addr, shutdown_signal())
         .await?;
 
+    tracing::info!("shutdown signal received, draining in-flight runs");
+    server_for_drain.drain_runs(Duration::from_secs(30)).await;
+    tracing::info!("server shut down gracefully");
+
     Ok(())
+}
+
+/// Wait for a shutdown signal (SIGTERM on Unix, Ctrl-C everywhere).
+async fn shutdown_signal() {
+    let ctrl_c = tokio::signal::ctrl_c();
+    #[cfg(unix)]
+    {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => {
+                tracing::info!("received Ctrl-C, initiating shutdown");
+            },
+            _ = sigterm.recv() => {
+                tracing::info!("received SIGTERM, initiating shutdown");
+            },
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = ctrl_c.await;
+        tracing::info!("received Ctrl-C, initiating shutdown");
+    }
 }

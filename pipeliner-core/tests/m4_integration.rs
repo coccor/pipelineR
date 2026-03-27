@@ -111,6 +111,9 @@ async fn full_etl_pipeline_csv_to_json_and_csv() {
                 config_json: csv_sink_config_json.to_string(),
             },
         ],
+        dead_letter_sink: None,
+        dead_letter_config: None,
+        pipeline_name: None,
     };
 
     // --- Execute the pipeline ---
@@ -218,6 +221,9 @@ async fn pipeline_with_all_records_filtered() {
             })
             .to_string(),
         }],
+        dead_letter_sink: None,
+        dead_letter_config: None,
+        pipeline_name: None,
     };
 
     let result = execute_pipeline(pipeline).await.expect("pipeline failed");

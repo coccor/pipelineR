@@ -8,7 +8,7 @@ use tracing::{error, info};
 
 use pipeliner_core::config::{
     build_pipeline, build_runtime_params, load_pipeline_config, load_connector_registry,
-    resolve_connector_binary, validate_config,
+    resolve_connector_binary, validate_config, ConnectorEntry, ConnectorRegistry,
 };
 use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::execute_pipeline;
@@ -82,6 +82,19 @@ enum Commands {
 enum ConnectorsCommands {
     /// List registered connectors.
     List,
+    /// Install a connector from a crate name.
+    Install {
+        /// Crate name (e.g., "pipeliner-connector-sql") or short name (e.g., "sql").
+        name: String,
+        /// Optional version constraint.
+        #[arg(long)]
+        version: Option<String>,
+    },
+    /// Remove a connector.
+    Remove {
+        /// Connector short name (e.g., "sql").
+        name: String,
+    },
 }
 
 /// Parse a `key=value` parameter string.
@@ -129,6 +142,12 @@ async fn main() -> ExitCode {
         Commands::Serve { port } => cmd_serve(port, &cli.connectors_file).await,
         Commands::Connectors { command } => match command {
             ConnectorsCommands::List => cmd_connectors_list(&cli.connectors_file),
+            ConnectorsCommands::Install { name, version } => {
+                cmd_connectors_install(&name, version.as_deref(), &cli.connectors_file).await
+            }
+            ConnectorsCommands::Remove { name } => {
+                cmd_connectors_remove(&name, &cli.connectors_file)
+            }
         },
     }
 }
@@ -157,6 +176,12 @@ async fn cmd_run(
 
     let runtime_params = build_runtime_params(params);
 
+    // Initialize OpenTelemetry tracing if configured.
+    let _telemetry_guard = config
+        .telemetry
+        .as_ref()
+        .and_then(pipeliner_core::telemetry::init_telemetry);
+
     info!(pipeline = %config.pipeline.name, "starting pipeline");
 
     let (definition, mut spawned) = match build_pipeline(&config, &registry, runtime_params).await {
@@ -174,6 +199,7 @@ async fn cmd_run(
         Ok(result) => {
             info!(
                 watermark = %result.watermark,
+                records_read = result.records_read,
                 "pipeline completed"
             );
             for sr in &result.sink_results {
@@ -422,6 +448,128 @@ fn cmd_connectors_list(connectors_file: &Path) -> ExitCode {
     }
 
     ExitCode::SUCCESS
+}
+
+/// Install a connector via `cargo install`, then register it in connectors.toml.
+async fn cmd_connectors_install(
+    name: &str,
+    version: Option<&str>,
+    connectors_file: &Path,
+) -> ExitCode {
+    let short_name = name
+        .strip_prefix("pipeliner-connector-")
+        .unwrap_or(name);
+    let crate_name = if name.starts_with("pipeliner-connector-") {
+        name.to_string()
+    } else {
+        format!("pipeliner-connector-{name}")
+    };
+
+    info!(connector = %short_name, crate_name = %crate_name, "installing connector");
+
+    let mut cmd = tokio::process::Command::new("cargo");
+    cmd.arg("install").arg(&crate_name);
+    if let Some(ver) = version {
+        cmd.arg("--version").arg(ver);
+    }
+
+    let status = cmd.status().await;
+    match status {
+        Ok(s) if s.success() => {}
+        Ok(s) => {
+            error!(
+                "cargo install failed with exit code: {}",
+                s.code().unwrap_or(-1)
+            );
+            return ExitCode::from(1);
+        }
+        Err(e) => {
+            error!("failed to run cargo install: {e}");
+            return ExitCode::from(1);
+        }
+    }
+
+    // Locate the installed binary in ~/.cargo/bin/.
+    let binary_path = home_cargo_bin(&crate_name).unwrap_or_else(|| PathBuf::from(&crate_name));
+
+    // Update connectors.toml.
+    if let Err(e) = update_registry(connectors_file, short_name, &binary_path) {
+        error!("failed to update connector registry: {e}");
+        return ExitCode::from(1);
+    }
+
+    info!(
+        connector = %short_name,
+        path = %binary_path.display(),
+        "connector installed successfully"
+    );
+    ExitCode::SUCCESS
+}
+
+/// Remove a connector from the registry and optionally delete its binary.
+fn cmd_connectors_remove(name: &str, connectors_file: &Path) -> ExitCode {
+    let mut registry = match load_connector_registry(connectors_file) {
+        Ok(r) => r,
+        Err(e) => {
+            error!("connector registry error: {e}");
+            return ExitCode::from(2);
+        }
+    };
+
+    let entry = registry.connectors.remove(name);
+    if entry.is_none() {
+        error!("connector '{name}' is not registered");
+        return ExitCode::from(1);
+    }
+
+    // Try to delete the binary.
+    if let Some(ref e) = entry {
+        let path = Path::new(&e.path);
+        if path.exists() {
+            if let Err(err) = std::fs::remove_file(path) {
+                error!("warning: could not delete binary {}: {err}", path.display());
+            }
+        }
+    }
+
+    if let Err(e) = write_registry(connectors_file, &registry) {
+        error!("failed to write connector registry: {e}");
+        return ExitCode::from(1);
+    }
+
+    info!(connector = %name, "connector removed");
+    ExitCode::SUCCESS
+}
+
+/// Resolve `~/.cargo/bin/<name>` if it exists.
+fn home_cargo_bin(crate_name: &str) -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    let p = PathBuf::from(home).join(".cargo/bin").join(crate_name);
+    if p.exists() { Some(p) } else { None }
+}
+
+/// Add or update a connector entry in the registry file.
+fn update_registry(path: &Path, name: &str, binary: &Path) -> Result<(), String> {
+    let mut registry = load_connector_registry(path).unwrap_or_default();
+    registry.connectors.insert(
+        name.to_string(),
+        ConnectorEntry {
+            path: binary.display().to_string(),
+            description: format!("Installed connector: pipeliner-connector-{name}"),
+        },
+    );
+    write_registry(path, &registry)
+}
+
+/// Serialize and write the registry to disk.
+fn write_registry(path: &Path, registry: &ConnectorRegistry) -> Result<(), String> {
+    let content =
+        toml::to_string_pretty(registry).map_err(|e| format!("TOML serialize error: {e}"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("cannot create directory {}: {e}", parent.display()))?;
+    }
+    std::fs::write(path, content).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
 /// Start the gRPC server in sidecar mode.

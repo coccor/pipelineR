@@ -1,7 +1,29 @@
+use chrono::Utc;
+
 use crate::dsl::ast::{Expr, PathSegment, TransformStep};
 use crate::dsl::error::{EvalError, TransformError};
 use crate::dsl::eval::eval_expr;
 use crate::record::{Record, Value};
+
+/// Result of executing a step with dead-letter support.
+#[derive(Debug)]
+pub struct StepExecutionResult {
+    /// Records that errored and should be sent to the dead-letter sink.
+    pub dead_letters: Vec<DeadLetterRecord>,
+}
+
+/// A record that failed a transform step, with error context.
+#[derive(Debug, Clone)]
+pub struct DeadLetterRecord {
+    /// The original record that failed.
+    pub original: Record,
+    /// Name of the transform step that failed.
+    pub step_name: String,
+    /// Error message.
+    pub error_message: String,
+    /// Timestamp when the error occurred (ISO 8601 UTC).
+    pub error_timestamp: String,
+}
 
 /// Extract the top-level field name from a [`Expr::FieldPath`].
 ///
@@ -137,6 +159,133 @@ fn step_where(args: &[Expr], records: &mut Vec<Record>) -> Result<(), TransformE
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Dead-letter-aware step execution
+// ---------------------------------------------------------------------------
+
+/// Execute a single transform step with dead-letter support.
+///
+/// Per-record errors in `set` and `where` steps are caught: the failed record
+/// is removed from the batch and returned as a [`DeadLetterRecord`] instead of
+/// aborting the entire batch. Steps that cannot fail per-record (`rename`,
+/// `remove`) delegate to their normal implementations.
+pub fn execute_step_with_dead_letter(
+    step: &TransformStep,
+    records: &mut Vec<Record>,
+) -> Result<StepExecutionResult, TransformError> {
+    match step.function.as_str() {
+        "set" => step_set_with_dl(&step.args, records, &step.function),
+        "where" => step_where_with_dl(&step.args, records, &step.function),
+        "rename" => {
+            step_rename(&step.args, records)?;
+            Ok(StepExecutionResult {
+                dead_letters: vec![],
+            })
+        }
+        "remove" => {
+            step_remove(&step.args, records)?;
+            Ok(StepExecutionResult {
+                dead_letters: vec![],
+            })
+        }
+        other => Err(TransformError::StepFailed {
+            step: other.to_string(),
+            message: format!("unknown step function '{other}'"),
+        }),
+    }
+}
+
+/// Dead-letter-aware version of `set(field, expr)`.
+///
+/// Extracts the target field name (batch-level — still errors normally on bad
+/// arguments). For each record, tries `eval_expr`; on error the record is moved
+/// to the dead-letter list instead of aborting.
+fn step_set_with_dl(
+    args: &[Expr],
+    records: &mut Vec<Record>,
+    step_name: &str,
+) -> Result<StepExecutionResult, TransformError> {
+    if args.len() != 2 {
+        return Err(TransformError::StepFailed {
+            step: "set".to_string(),
+            message: format!("expected 2 arguments, got {}", args.len()),
+        });
+    }
+    let field_name =
+        extract_top_level_field_name(&args[0]).map_err(|source| TransformError::EvalFailed {
+            index: 0,
+            source,
+        })?;
+
+    let mut dead_letters = Vec::new();
+    let mut kept = Vec::new();
+    let timestamp = Utc::now().to_rfc3339();
+
+    for record in records.drain(..) {
+        match eval_expr(&args[1], &record) {
+            Ok(value) => {
+                let mut rec = record;
+                rec.insert(field_name.clone(), value);
+                kept.push(rec);
+            }
+            Err(e) => {
+                dead_letters.push(DeadLetterRecord {
+                    original: record,
+                    step_name: step_name.to_string(),
+                    error_message: e.to_string(),
+                    error_timestamp: timestamp.clone(),
+                });
+            }
+        }
+    }
+
+    *records = kept;
+    Ok(StepExecutionResult { dead_letters })
+}
+
+/// Dead-letter-aware version of `where(predicate)`.
+///
+/// For each record, tries `eval_expr`; on error the record is moved to the
+/// dead-letter list. Records where the predicate evaluates to `true` are kept.
+fn step_where_with_dl(
+    args: &[Expr],
+    records: &mut Vec<Record>,
+    step_name: &str,
+) -> Result<StepExecutionResult, TransformError> {
+    if args.len() != 1 {
+        return Err(TransformError::StepFailed {
+            step: "where".to_string(),
+            message: format!("expected 1 argument, got {}", args.len()),
+        });
+    }
+    let predicate = &args[0];
+    let mut dead_letters = Vec::new();
+    let mut kept = Vec::new();
+    let timestamp = Utc::now().to_rfc3339();
+
+    for record in records.drain(..) {
+        match eval_expr(predicate, &record) {
+            Ok(val) => {
+                if val == Value::Bool(true) {
+                    kept.push(record);
+                }
+                // Records where predicate is false are simply dropped (not dead-lettered).
+            }
+            Err(e) => {
+                dead_letters.push(DeadLetterRecord {
+                    original: record,
+                    step_name: step_name.to_string(),
+                    error_message: e.to_string(),
+                    error_timestamp: timestamp.clone(),
+                });
+            }
+        }
+    }
+
+    *records = kept;
+    Ok(StepExecutionResult { dead_letters })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +410,74 @@ mod tests {
         // amount_f should be present
         assert_eq!(records[0].get("amount_f"), Some(&Value::Float(10.5)));
         assert_eq!(records[1].get("amount_f"), Some(&Value::Float(7.0)));
+    }
+
+    // --- Dead-letter-aware tests ---
+
+    #[test]
+    fn dl_set_routes_bad_records() {
+        // to_float on a non-numeric string should dead-letter that record.
+        let step = parse_step("set(.amount, to_float(.amount))").unwrap();
+        let mut records = vec![
+            make_record(vec![("amount", Value::String("42.5".to_string()))]),
+            make_record(vec![("amount", Value::String("not_a_number".to_string()))]),
+            make_record(vec![("amount", Value::String("7.0".to_string()))]),
+        ];
+        let result = execute_step_with_dead_letter(&step, &mut records).unwrap();
+        // Good records stay
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].get("amount"), Some(&Value::Float(42.5)));
+        assert_eq!(records[1].get("amount"), Some(&Value::Float(7.0)));
+        // Bad record is dead-lettered
+        assert_eq!(result.dead_letters.len(), 1);
+        assert_eq!(result.dead_letters[0].step_name, "set");
+        assert_eq!(
+            result.dead_letters[0].original.get("amount"),
+            Some(&Value::String("not_a_number".to_string()))
+        );
+    }
+
+    #[test]
+    fn dl_where_routes_bad_records() {
+        // Comparing a string to a float should error.
+        let step = parse_step("where(.amount > 0.0)").unwrap();
+        let mut records = vec![
+            make_record(vec![("amount", Value::Float(10.0))]),
+            make_record(vec![("amount", Value::String("bad".to_string()))]),
+            make_record(vec![("amount", Value::Float(3.0))]),
+        ];
+        let result = execute_step_with_dead_letter(&step, &mut records).unwrap();
+        // Good records where predicate is true stay
+        assert_eq!(records.len(), 2);
+        // Bad record is dead-lettered
+        assert_eq!(result.dead_letters.len(), 1);
+        assert_eq!(result.dead_letters[0].step_name, "where");
+    }
+
+    #[test]
+    fn dl_rename_no_dead_letters() {
+        let step = parse_step("rename(.old, .new)").unwrap();
+        let mut records = vec![make_record(vec![(
+            "old",
+            Value::String("hello".to_string()),
+        )])];
+        let result = execute_step_with_dead_letter(&step, &mut records).unwrap();
+        assert!(result.dead_letters.is_empty());
+        assert_eq!(
+            records[0].get("new"),
+            Some(&Value::String("hello".to_string()))
+        );
+    }
+
+    #[test]
+    fn dl_set_all_good() {
+        let step = parse_step("set(.amount, to_float(.amount))").unwrap();
+        let mut records = vec![
+            make_record(vec![("amount", Value::String("1.0".to_string()))]),
+            make_record(vec![("amount", Value::String("2.0".to_string()))]),
+        ];
+        let result = execute_step_with_dead_letter(&step, &mut records).unwrap();
+        assert_eq!(records.len(), 2);
+        assert!(result.dead_letters.is_empty());
     }
 }

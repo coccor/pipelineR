@@ -6,3 +6,4 @@ pub mod error;
 pub mod connector;
 pub mod runtime;
 pub mod server;
+pub mod telemetry;

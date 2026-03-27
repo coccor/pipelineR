@@ -8,10 +8,11 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::dsl::parser::parse_step;
 use crate::error::PipelineError;
+use crate::telemetry::TelemetryConfig;
 use crate::connector::{
     ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper,
 };
@@ -37,6 +38,9 @@ pub struct PipelineConfig {
     pub sinks: Vec<SinkSpec>,
     /// Optional dead-letter sink.
     pub dead_letter: Option<SinkSpec>,
+    /// Optional telemetry configuration for OpenTelemetry tracing.
+    #[serde(default)]
+    pub telemetry: Option<TelemetryConfig>,
 }
 
 /// Pipeline metadata (name, description).
@@ -88,7 +92,7 @@ pub struct SinkSpec {
 // ---------------------------------------------------------------------------
 
 /// Connector registry loaded from `connectors.toml`.
-#[derive(Debug, Deserialize, Default, Clone)]
+#[derive(Debug, Deserialize, Serialize, Default, Clone)]
 pub struct ConnectorRegistry {
     /// Map of connector name → connector entry.
     #[serde(default)]
@@ -96,7 +100,7 @@ pub struct ConnectorRegistry {
 }
 
 /// A single connector entry in the registry.
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct ConnectorEntry {
     /// Path to the connector binary.
     pub path: String,
@@ -291,6 +295,8 @@ pub struct SpawnedConnectors {
     pub source: ConnectorProcess,
     /// Sink connector processes (one per configured sink).
     pub sinks: Vec<ConnectorProcess>,
+    /// Optional dead-letter sink connector process.
+    pub dead_letter: Option<ConnectorProcess>,
 }
 
 impl SpawnedConnectors {
@@ -299,6 +305,9 @@ impl SpawnedConnectors {
         self.source.kill().await.ok();
         for sink in &mut self.sinks {
             sink.kill().await.ok();
+        }
+        if let Some(ref mut dl) = self.dead_letter {
+            dl.kill().await.ok();
         }
     }
 }
@@ -315,14 +324,29 @@ pub async fn build_pipeline(
     // Resolve and spawn source connector.
     let source_binary = resolve_connector_binary(&config.source.connector, registry)
         .map_err(PipelineError::Config)?;
+    let source_binary_path = source_binary.to_str().unwrap_or_default().to_string();
     let source_process =
-        ConnectorProcess::spawn(&config.source.connector, source_binary.to_str().unwrap_or_default())
-            .await?;
+        ConnectorProcess::spawn(&config.source.connector, &source_binary_path)
+            .await
+            .map_err(|e| {
+                PipelineError::Source(format!(
+                    "failed to spawn source connector '{}' (binary: '{}'): {}",
+                    config.source.connector, source_binary_path, e
+                ))
+            })?;
 
     // Small delay for the gRPC server to be ready.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let source_client = SourceConnectorClientWrapper::connect(source_process.address()).await?;
+    let source_addr = source_process.address().to_string();
+    let source_client = SourceConnectorClientWrapper::connect(source_process.address())
+        .await
+        .map_err(|e| {
+            PipelineError::Source(format!(
+                "failed to connect to source connector '{}' at {}: {}",
+                config.source.connector, source_addr, e
+            ))
+        })?;
 
     // Build source config JSON.
     let source_config_json = toml_value_to_json(&config.source.config);
@@ -352,11 +376,27 @@ pub async fn build_pipeline(
     for (i, sink_spec) in config.sinks.iter().enumerate() {
         let sink_binary = resolve_connector_binary(&sink_spec.connector, registry)
             .map_err(PipelineError::Config)?;
+        let sink_binary_path = sink_binary.to_str().unwrap_or_default().to_string();
         let label = format!("{}-sink-{}", sink_spec.connector, i);
-        let process = ConnectorProcess::spawn(&label, sink_binary.to_str().unwrap_or_default()).await?;
+        let process = ConnectorProcess::spawn(&label, &sink_binary_path)
+            .await
+            .map_err(|e| {
+                PipelineError::Sink(format!(
+                    "failed to spawn sink[{}] connector '{}' (binary: '{}'): {}",
+                    i, sink_spec.connector, sink_binary_path, e
+                ))
+            })?;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let client = SinkConnectorClientWrapper::connect(process.address()).await?;
+        let sink_addr = process.address().to_string();
+        let client = SinkConnectorClientWrapper::connect(process.address())
+            .await
+            .map_err(|e| {
+                PipelineError::Sink(format!(
+                    "failed to connect to sink[{}] connector '{}' at {}: {}",
+                    i, sink_spec.connector, sink_addr, e
+                ))
+            })?;
         let config_json = toml_value_to_json(&sink_spec.config);
 
         sink_processes.push(process);
@@ -366,6 +406,43 @@ pub async fn build_pipeline(
         });
     }
 
+    // Optionally resolve and spawn dead-letter sink connector.
+    let mut dl_process = None;
+    let mut dl_client = None;
+    let mut dl_config = None;
+
+    if let Some(dl_spec) = &config.dead_letter {
+        let dl_binary = resolve_connector_binary(&dl_spec.connector, registry)
+            .map_err(PipelineError::Config)?;
+        let dl_binary_path = dl_binary.to_str().unwrap_or_default().to_string();
+        let label = format!("{}-dead-letter", dl_spec.connector);
+        let process =
+            ConnectorProcess::spawn(&label, &dl_binary_path)
+                .await
+                .map_err(|e| {
+                    PipelineError::Sink(format!(
+                        "failed to spawn dead-letter connector '{}' (binary: '{}'): {}",
+                        dl_spec.connector, dl_binary_path, e
+                    ))
+                })?;
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let dl_addr = process.address().to_string();
+        let client = SinkConnectorClientWrapper::connect(process.address())
+            .await
+            .map_err(|e| {
+                PipelineError::Sink(format!(
+                    "failed to connect to dead-letter connector '{}' at {}: {}",
+                    dl_spec.connector, dl_addr, e
+                ))
+            })?;
+        let config_json = toml_value_to_json(&dl_spec.config);
+
+        dl_process = Some(process);
+        dl_client = Some(client);
+        dl_config = Some(SinkConfig { config_json });
+    }
+
     let definition = PipelineDefinition {
         source: source_client,
         source_config,
@@ -373,11 +450,15 @@ pub async fn build_pipeline(
         transforms,
         sinks: sink_clients,
         sink_configs,
+        dead_letter_sink: dl_client,
+        dead_letter_config: dl_config,
+        pipeline_name: Some(config.pipeline.name.clone()),
     };
 
     let spawned = SpawnedConnectors {
         source: source_process,
         sinks: sink_processes,
+        dead_letter: dl_process,
     };
 
     Ok((definition, spawned))
@@ -390,41 +471,65 @@ pub async fn build_pipeline(
 /// Validate a pipeline config by parsing transforms and checking connector availability.
 ///
 /// Does not spawn connectors — only checks that the config is structurally valid
-/// and connectors can be resolved.
+/// and connectors can be resolved. Returns a list of error/warning strings (empty
+/// means the config is valid).
 pub fn validate_config(
     config: &PipelineConfig,
     registry: &ConnectorRegistry,
 ) -> Vec<String> {
     let mut errors = Vec::new();
 
+    // Check pipeline name is not empty.
+    if config.pipeline.name.trim().is_empty() {
+        errors.push("pipeline.name: must not be empty".to_string());
+    }
+
     // Check source connector exists.
     if let Err(e) = resolve_connector_binary(&config.source.connector, registry) {
-        errors.push(format!("source: {e}"));
+        errors.push(format!("source connector '{}': {e}", config.source.connector));
     }
 
     // Check transform steps parse.
     for group in &config.transforms {
-        for step_str in &group.steps {
+        if group.steps.is_empty() {
+            // Empty steps list is valid but worth noting — no-op transform group.
+            continue;
+        }
+        for (j, step_str) in group.steps.iter().enumerate() {
             if let Err(e) = parse_step(step_str) {
                 errors.push(format!(
-                    "transform '{}': invalid step '{}': {}",
-                    group.name, step_str, e
+                    "transforms['{}']: invalid step[{}] '{}': {}",
+                    group.name, j, step_str, e
                 ));
             }
         }
     }
 
-    // Check sink connectors exist.
+    // Check sink connectors exist and detect duplicate connector names.
+    let mut seen_sink_connectors = std::collections::HashSet::new();
     for (i, sink_spec) in config.sinks.iter().enumerate() {
         if let Err(e) = resolve_connector_binary(&sink_spec.connector, registry) {
-            errors.push(format!("sink[{}]: {e}", i));
+            errors.push(format!("sinks[{}] connector '{}': {e}", i, sink_spec.connector));
+        }
+        if !seen_sink_connectors.insert(&sink_spec.connector) {
+            errors.push(format!(
+                "sinks[{}]: duplicate connector name '{}' (consider using distinct config to differentiate)",
+                i, sink_spec.connector
+            ));
         }
     }
 
     // Check dead-letter connector exists.
     if let Some(dl) = &config.dead_letter {
         if let Err(e) = resolve_connector_binary(&dl.connector, registry) {
-            errors.push(format!("dead_letter: {e}"));
+            errors.push(format!("dead_letter connector '{}': {e}", dl.connector));
+        }
+        // Warn if dead-letter connector is the same as the source connector.
+        if dl.connector == config.source.connector {
+            errors.push(format!(
+                "dead_letter: connector '{}' is the same as source connector (may cause feedback loop)",
+                dl.connector
+            ));
         }
     }
 

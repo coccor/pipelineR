@@ -13,7 +13,7 @@ regex = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "process", "io-util", "time", "signal"] }
 tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tokio-util = "0.7"
 uuid = { version = "1", features = ["v4"] }
@@ -21,6 +21,9 @@ toml = "0.8"
 tonic = "0.12"
 tracing = "0.1"
 winnow = "0.7"
+opentelemetry = "0.28"
+opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
 
 [dev-dependencies]
 async-trait = "0.1"

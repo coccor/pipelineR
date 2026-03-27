@@ -14,6 +14,12 @@ pub enum FileSourceError {
     /// No files matched the provided path or glob pattern.
     #[error("no files matched pattern: {0}")]
     NoFilesMatched(String),
+    /// A cloud storage operation failed.
+    #[error("cloud storage error: {0}")]
+    CloudStorage(String),
+    /// The cloud object path could not be parsed (e.g. missing bucket name).
+    #[error("invalid cloud path: {0}")]
+    InvalidCloudPath(String),
 }
 
 /// Errors produced by the file sink connector.
@@ -25,4 +31,10 @@ pub enum FileSinkError {
     /// A serialization error occurred.
     #[error("serialization error: {0}")]
     Serialization(String),
+    /// A cloud storage operation failed.
+    #[error("cloud storage error: {0}")]
+    CloudStorage(String),
+    /// The cloud object path could not be parsed (e.g. missing bucket name).
+    #[error("invalid cloud path: {0}")]
+    InvalidCloudPath(String),
 }

@@ -2,6 +2,36 @@
 
 use serde::Deserialize;
 
+/// Storage backend selector.
+///
+/// Determines whether files are read from / written to the local filesystem or a
+/// cloud object store. When omitted from TOML config, defaults to `Local`.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum StorageBackendConfig {
+    /// Local filesystem (default).
+    #[default]
+    Local,
+    /// Amazon S3 (or S3-compatible stores such as MinIO).
+    S3 {
+        /// AWS region (e.g. `us-east-1`). Falls back to SDK default chain when `None`.
+        region: Option<String>,
+        /// Custom endpoint URL for S3-compatible stores (e.g. MinIO).
+        endpoint: Option<String>,
+    },
+    /// Azure Blob Storage.
+    Azure {
+        /// Storage account connection string. Falls back to `AZURE_STORAGE_CONNECTION_STRING`.
+        connection_string: Option<String>,
+    },
+    /// Google Cloud Storage.
+    Gcs {
+        /// GCP project ID. Falls back to `GOOGLE_CLOUD_PROJECT` env var.
+        project_id: Option<String>,
+    },
+}
+
+
 /// File format.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -59,22 +89,40 @@ fn default_true() -> bool {
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileSourceConfig {
     /// Path to a file or a glob pattern (e.g., `data/*.csv`).
+    ///
+    /// Interpretation depends on the storage backend:
+    /// - `Local`: filesystem path or glob
+    /// - `S3`: `s3://bucket/prefix/key.csv`
+    /// - `Azure`: `azure://container/prefix/key.csv`
+    /// - `GCS`: `gs://bucket/prefix/key.csv`
     pub path: String,
     /// File format.
     pub format: FileFormat,
     /// CSV-specific options (only used when `format` is `csv`).
     #[serde(default)]
     pub csv: Option<CsvOptions>,
+    /// Storage backend. Defaults to `Local` when omitted.
+    #[serde(default)]
+    pub storage: Option<StorageBackendConfig>,
 }
 
 /// Top-level configuration for the file sink connector.
 #[derive(Debug, Clone, Deserialize)]
 pub struct FileSinkConfig {
     /// Output file path.
+    ///
+    /// Interpretation depends on the storage backend:
+    /// - `Local`: filesystem path
+    /// - `S3`: `s3://bucket/prefix/key.csv`
+    /// - `Azure`: `azure://container/prefix/key.csv`
+    /// - `GCS`: `gs://bucket/prefix/key.csv`
     pub path: String,
     /// Output file format.
     pub format: SinkFileFormat,
     /// CSV-specific options (only used when `format` is `csv`).
     #[serde(default)]
     pub csv: Option<CsvOptions>,
+    /// Storage backend. Defaults to `Local` when omitted.
+    #[serde(default)]
+    pub storage: Option<StorageBackendConfig>,
 }

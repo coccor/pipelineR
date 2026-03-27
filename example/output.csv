@@ -1,0 +1,8 @@
+amount,product,is_active,quantity,id,region
+29.99,Widget A,true,10,1,North
+149.5,Gadget X,true,1,3,North
+75.25,Gadget Y,true,5,5,West
+200,Gadget X,true,8,7,North
+45,Widget B,true,15,8,East
+999.99,Gadget Z,true,1,9,West
+10.5,Widget A,true,7,10,South

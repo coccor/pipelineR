@@ -5,5 +5,10 @@ members = [
     "pipeliner-cli",
     "pipeliner-sdk",
     "pipeliner-proto",
+    "pipeliner-arrow-convert",
     "connectors/pipeliner-connector-file",
+    "connectors/pipeliner-connector-sql",
+    "connectors/pipeliner-connector-rest",
+    "connectors/pipeliner-connector-delta",
+    "connectors/pipeliner-connector-parquet",
 ]

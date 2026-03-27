@@ -1,0 +1,7 @@
+{"amount":29.99,"id":"1","is_active":"true","product":"Widget A","quantity":10,"region":"North"}
+{"amount":149.5,"id":"3","is_active":"true","product":"Gadget X","quantity":1,"region":"North"}
+{"amount":75.25,"id":"5","is_active":"true","product":"Gadget Y","quantity":5,"region":"West"}
+{"amount":200.0,"id":"7","is_active":"true","product":"Gadget X","quantity":8,"region":"North"}
+{"amount":45.0,"id":"8","is_active":"true","product":"Widget B","quantity":15,"region":"East"}
+{"amount":999.99,"id":"9","is_active":"true","product":"Gadget Z","quantity":1,"region":"West"}
+{"amount":10.5,"id":"10","is_active":"true","product":"Widget A","quantity":7,"region":"South"}

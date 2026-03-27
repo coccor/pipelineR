@@ -1,0 +1,12 @@
+[package]
+name = "pipeliner-arrow-convert"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pipeliner-core = { path = "../pipeliner-core" }
+arrow = { version = "54", default-features = false }
+chrono = "0.4"
+indexmap = "2"
+serde_json = "1"
+thiserror = "2"

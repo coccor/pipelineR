@@ -17,13 +17,13 @@ pub struct LoadResult {
     pub error_message: String,
 }
 
-/// Trait that sink plugins implement.
+/// Trait that sink connectors implement.
 ///
 /// A sink is responsible for receiving `RecordBatch` messages and writing
 /// them to an external data system.
 #[async_trait]
 pub trait Sink: Send + Sync + 'static {
-    /// Return metadata about this sink plugin.
+    /// Return metadata about this sink connector.
     fn describe(&self) -> SinkDescriptor;
 
     /// Validate the provided configuration.

@@ -24,8 +24,8 @@ use pipeliner_proto::pipeliner::v1::{
 use pipeliner_proto::{RuntimeParams, SchemaResponse, SourceConfig, ValidationResult};
 
 use crate::config::{
-    build_pipeline, build_runtime_params, load_plugin_registry, parse_pipeline_config,
-    validate_config, PluginRegistry,
+    build_pipeline, build_runtime_params, load_connector_registry, parse_pipeline_config,
+    validate_config, ConnectorRegistry,
 };
 use crate::runtime::{execute_pipeline_with, RunEvent, RunEventSender};
 
@@ -46,13 +46,13 @@ struct RunState {
 pub struct PipelineRServer {
     /// All runs indexed by run_id.
     runs: RwLock<HashMap<String, Arc<Mutex<RunState>>>>,
-    /// Plugin registry for resolving plugin binaries.
-    registry: PluginRegistry,
+    /// Connector registry for resolving connector binaries.
+    registry: ConnectorRegistry,
 }
 
 impl PipelineRServer {
     /// Create a new server instance.
-    pub fn new(registry: PluginRegistry) -> Self {
+    pub fn new(registry: ConnectorRegistry) -> Self {
         Self {
             runs: RwLock::new(HashMap::new()),
             registry,
@@ -61,14 +61,14 @@ impl PipelineRServer {
 
     /// Create a new server instance with default (empty) registry.
     pub fn with_default_registry() -> Self {
-        Self::new(PluginRegistry::default())
+        Self::new(ConnectorRegistry::default())
     }
 
     /// Create a new server instance loading registry from a file path.
     ///
     /// If the file doesn't exist, uses an empty registry.
     pub fn from_registry_path(path: &Path) -> Result<Self, crate::config::ConfigError> {
-        let registry = load_plugin_registry(path)?;
+        let registry = load_connector_registry(path)?;
         Ok(Self::new(registry))
     }
 }
@@ -187,22 +187,22 @@ impl PipelineR for PipelineRServer {
         let params: Vec<(String, String)> = req.params.into_iter().collect();
         let runtime_params = build_runtime_params(&params);
 
-        // Resolve, spawn, connect to source plugin, call discover_schema.
+        // Resolve, spawn, connect to source connector, call discover_schema.
         let source_binary =
-            crate::config::resolve_plugin_binary(&config.source.plugin, &self.registry)
-                .map_err(|e| Status::not_found(format!("source plugin: {e}")))?;
+            crate::config::resolve_connector_binary(&config.source.connector, &self.registry)
+                .map_err(|e| Status::not_found(format!("source connector: {e}")))?;
 
-        let mut process = crate::plugin::PluginProcess::spawn(
-            &config.source.plugin,
+        let mut process = crate::connector::ConnectorProcess::spawn(
+            &config.source.connector,
             source_binary.to_str().unwrap_or_default(),
         )
         .await
-        .map_err(|e| Status::internal(format!("failed to spawn source plugin: {e}")))?;
+        .map_err(|e| Status::internal(format!("failed to spawn source connector: {e}")))?;
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let mut client =
-            crate::plugin::SourcePluginClientWrapper::connect(process.address())
+            crate::connector::SourceConnectorClientWrapper::connect(process.address())
                 .await
                 .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
 
@@ -230,20 +230,20 @@ impl PipelineR for PipelineRServer {
         let runtime_params = build_runtime_params(&params);
 
         let source_binary =
-            crate::config::resolve_plugin_binary(&config.source.plugin, &self.registry)
-                .map_err(|e| Status::not_found(format!("source plugin: {e}")))?;
+            crate::config::resolve_connector_binary(&config.source.connector, &self.registry)
+                .map_err(|e| Status::not_found(format!("source connector: {e}")))?;
 
-        let mut process = crate::plugin::PluginProcess::spawn(
-            &config.source.plugin,
+        let mut process = crate::connector::ConnectorProcess::spawn(
+            &config.source.connector,
             source_binary.to_str().unwrap_or_default(),
         )
         .await
-        .map_err(|e| Status::internal(format!("failed to spawn source plugin: {e}")))?;
+        .map_err(|e| Status::internal(format!("failed to spawn source connector: {e}")))?;
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let mut client =
-            crate::plugin::SourcePluginClientWrapper::connect(process.address())
+            crate::connector::SourceConnectorClientWrapper::connect(process.address())
                 .await
                 .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
 

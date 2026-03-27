@@ -8,14 +8,14 @@ use std::time::Duration;
 
 use pipeliner_core::config::{
     build_pipeline, build_runtime_params, parse_pipeline_config,
-    validate_config, PluginRegistry, PluginEntry, toml_value_to_json,
+    validate_config, ConnectorRegistry, ConnectorEntry, toml_value_to_json,
 };
-use pipeliner_core::plugin::{PluginProcess, SourcePluginClientWrapper};
+use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::execute_pipeline;
 use pipeliner_proto::{RuntimeParams, SourceConfig};
 
-/// Find the compiled file plugin binary in the target directory.
-fn plugin_binary_path() -> String {
+/// Find the compiled file connector binary in the target directory.
+fn connector_binary_path() -> String {
     let mut path = std::env::current_exe()
         .expect("current_exe")
         .parent()
@@ -23,21 +23,21 @@ fn plugin_binary_path() -> String {
         .parent()
         .expect("parent")
         .to_path_buf();
-    path.push("pipeliner-plugin-file");
+    path.push("pipeliner-connector-file");
     path.to_str().expect("path to string").to_string()
 }
 
-/// Build a plugin registry pointing to our compiled file plugin.
-fn test_registry() -> PluginRegistry {
-    let mut plugins = std::collections::HashMap::new();
-    plugins.insert(
+/// Build a connector registry pointing to our compiled file connector.
+fn test_registry() -> ConnectorRegistry {
+    let mut connectors = std::collections::HashMap::new();
+    connectors.insert(
         "file".to_string(),
-        PluginEntry {
-            path: plugin_binary_path(),
+        ConnectorEntry {
+            path: connector_binary_path(),
             description: "File source and sink".to_string(),
         },
     );
-    PluginRegistry { plugins }
+    ConnectorRegistry { connectors }
 }
 
 #[tokio::test]
@@ -63,7 +63,7 @@ name = "test_csv_to_json"
 description = "Integration test pipeline"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "{input}"
 config.format = "csv"
 
@@ -76,7 +76,7 @@ steps = [
 ]
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "{output}"
 config.format = "json"
 "#,
@@ -138,7 +138,7 @@ async fn run_pipeline_with_multiple_sinks_from_toml() {
 name = "multi_sink"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "{input}"
 config.format = "csv"
 
@@ -147,12 +147,12 @@ name = "passthrough"
 steps = []
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "{json_out}"
 config.format = "json"
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "{csv_out}"
 config.format = "csv"
 "#,
@@ -191,7 +191,7 @@ fn validate_config_catches_bad_transform() {
 name = "bad_transforms"
 
 [source]
-plugin = "file"
+connector = "file"
 
 [[transforms]]
 name = "broken"
@@ -200,14 +200,14 @@ steps = [
 ]
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 "#;
     let config = parse_pipeline_config(toml_content).unwrap();
     // Use an empty registry — plugin resolution will fail but that's separate.
-    let registry = PluginRegistry::default();
+    let registry = ConnectorRegistry::default();
     let errors = validate_config(&config, &registry);
 
-    // Should have errors for: source plugin not found, sink plugin not found, bad transform.
+    // Should have errors for: source connector not found, sink connector not found, bad transform.
     let has_transform_error = errors.iter().any(|e| e.contains("invalid step"));
     assert!(has_transform_error, "expected transform parse error, got: {errors:?}");
 }
@@ -219,17 +219,17 @@ fn validate_config_catches_missing_plugin() {
 name = "missing_plugin"
 
 [source]
-plugin = "nonexistent"
+connector = "nonexistent"
 
 [[transforms]]
 name = "noop"
 steps = []
 
 [[sinks]]
-plugin = "also-nonexistent"
+connector = "also-nonexistent"
 "#;
     let config = parse_pipeline_config(toml_content).unwrap();
-    let registry = PluginRegistry::default();
+    let registry = ConnectorRegistry::default();
     let errors = validate_config(&config, &registry);
 
     assert!(errors.iter().any(|e| e.contains("nonexistent")));
@@ -245,7 +245,7 @@ fn parse_config_with_env_var_substitution() {
 name = "env_test"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "${PIPELINER_TEST_INPUT_PATH}"
 config.format = "csv"
 
@@ -254,7 +254,7 @@ name = "noop"
 steps = []
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/tmp/output.json"
 config.format = "json"
 "#;
@@ -277,14 +277,14 @@ async fn schema_discovery_from_config() {
     }
 
     let registry = test_registry();
-    let source_binary = pipeliner_core::config::resolve_plugin_binary("file", &registry).unwrap();
+    let source_binary = pipeliner_core::config::resolve_connector_binary("file", &registry).unwrap();
 
-    let mut process = PluginProcess::spawn("file", source_binary.to_str().unwrap())
+    let mut process = ConnectorProcess::spawn("file", source_binary.to_str().unwrap())
         .await
         .expect("spawn");
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let mut client = SourcePluginClientWrapper::connect(process.address())
+    let mut client = SourceConnectorClientWrapper::connect(process.address())
         .await
         .expect("connect");
 

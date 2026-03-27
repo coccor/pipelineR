@@ -10,11 +10,11 @@ use tonic::transport::Server;
 
 use pipeliner_core::dsl::parser::parse_step;
 use pipeliner_core::dsl::step::execute_step;
-use pipeliner_core::plugin::{SinkPluginClientWrapper, SourcePluginClientWrapper};
+use pipeliner_core::connector::{SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 use pipeliner_core::record::{Record, Value};
 use pipeliner_proto::pipeliner::v1::load_request::Payload;
-use pipeliner_proto::pipeliner::v1::sink_plugin_server::SinkPluginServer;
-use pipeliner_proto::pipeliner::v1::source_plugin_server::SourcePluginServer;
+use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnectorServer;
+use pipeliner_proto::pipeliner::v1::source_connector_server::SourceConnectorServer;
 use pipeliner_proto::pipeliner::v1::{LoadMetadata, LoadRequest};
 use pipeliner_proto::{
     Partition, RecordBatch as ProtoRecordBatch, RuntimeParams, SchemaRequirementResponse,
@@ -156,7 +156,7 @@ async fn source_extract_transform_sink_load() {
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(SourcePluginServer::new(GrpcSourceService::new(MockSource)))
+            .add_service(SourceConnectorServer::new(GrpcSourceService::new(MockSource)))
             .serve_with_incoming(TcpListenerStream::new(source_listener))
             .await
             .unwrap();
@@ -173,7 +173,7 @@ async fn source_extract_transform_sink_load() {
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(SinkPluginServer::new(GrpcSinkService::new(mock_sink)))
+            .add_service(SinkConnectorServer::new(GrpcSinkService::new(mock_sink)))
             .serve_with_incoming(TcpListenerStream::new(sink_listener))
             .await
             .unwrap();
@@ -183,7 +183,7 @@ async fn source_extract_transform_sink_load() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     // --- Connect to source and extract ---
-    let mut source_client = SourcePluginClientWrapper::connect(format!("http://{source_addr}"))
+    let mut source_client = SourceConnectorClientWrapper::connect(format!("http://{source_addr}"))
         .await
         .unwrap();
 
@@ -234,7 +234,7 @@ async fn source_extract_transform_sink_load() {
     assert_eq!(records[0].get("amount"), Some(&Value::Float(42.5)));
 
     // --- Send to sink ---
-    let mut sink_client = SinkPluginClientWrapper::connect(format!("http://{sink_addr}"))
+    let mut sink_client = SinkConnectorClientWrapper::connect(format!("http://{sink_addr}"))
         .await
         .unwrap();
 

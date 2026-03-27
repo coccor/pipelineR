@@ -1,7 +1,7 @@
-//! Plugin server helpers for running source and sink plugins as gRPC services.
+//! Connector server helpers for running source and sink connectors as gRPC services.
 //!
 //! These functions handle port binding, signal handling, and tonic server setup
-//! so that plugin binaries only need to implement the [`Source`] or [`Sink`] traits.
+//! so that connector binaries only need to implement the [`Source`] or [`Sink`] traits.
 
 use std::net::SocketAddr;
 
@@ -9,8 +9,8 @@ use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 
-use pipeliner_proto::pipeliner::v1::sink_plugin_server::SinkPluginServer;
-use pipeliner_proto::pipeliner::v1::source_plugin_server::SourcePluginServer;
+use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnectorServer;
+use pipeliner_proto::pipeliner::v1::source_connector_server::SourceConnectorServer;
 
 use crate::grpc_sink::GrpcSinkService;
 use crate::grpc_source::GrpcSourceService;
@@ -28,7 +28,7 @@ const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 /// # Errors
 ///
 /// Returns an error if binding or serving fails.
-pub async fn run_plugin<S, K>(source: S, sink: K) -> Result<(), Box<dyn std::error::Error>>
+pub async fn run_connector<S, K>(source: S, sink: K) -> Result<(), Box<dyn std::error::Error>>
 where
     S: Source,
     K: Sink,
@@ -38,11 +38,11 @@ where
     let local_addr = listener.local_addr()?;
     println!("PORT={}", local_addr.port());
 
-    let source_svc = SourcePluginServer::new(GrpcSourceService::new(source))
+    let source_svc = SourceConnectorServer::new(GrpcSourceService::new(source))
         .max_decoding_message_size(MAX_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
-    let sink_svc = SinkPluginServer::new(GrpcSinkService::new(sink))
+    let sink_svc = SinkConnectorServer::new(GrpcSinkService::new(sink))
         .max_decoding_message_size(MAX_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
@@ -63,13 +63,13 @@ where
 /// # Errors
 ///
 /// Returns an error if binding or serving fails.
-pub async fn run_source_plugin<S: Source>(source: S) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_source_connector<S: Source>(source: S) -> Result<(), Box<dyn std::error::Error>> {
     let port = parse_port_arg();
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
     let local_addr = listener.local_addr()?;
     println!("PORT={}", local_addr.port());
 
-    let svc = SourcePluginServer::new(GrpcSourceService::new(source))
+    let svc = SourceConnectorServer::new(GrpcSourceService::new(source))
         .max_decoding_message_size(MAX_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_MESSAGE_SIZE);
 
@@ -89,13 +89,13 @@ pub async fn run_source_plugin<S: Source>(source: S) -> Result<(), Box<dyn std::
 /// # Errors
 ///
 /// Returns an error if binding or serving fails.
-pub async fn run_sink_plugin<K: Sink>(sink: K) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_sink_connector<K: Sink>(sink: K) -> Result<(), Box<dyn std::error::Error>> {
     let port = parse_port_arg();
     let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], port))).await?;
     let local_addr = listener.local_addr()?;
     println!("PORT={}", local_addr.port());
 
-    let svc = SinkPluginServer::new(GrpcSinkService::new(sink))
+    let svc = SinkConnectorServer::new(GrpcSinkService::new(sink))
         .max_decoding_message_size(MAX_MESSAGE_SIZE)
         .max_encoding_message_size(MAX_MESSAGE_SIZE);
 

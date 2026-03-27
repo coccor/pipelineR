@@ -1,4 +1,4 @@
-//! File plugin for pipelineR.
+//! File connector for pipelineR.
 //!
 //! Reads CSV, newline-delimited JSON, and Parquet files from the local filesystem (source).
 //! Writes CSV and newline-delimited JSON files to the local filesystem (sink).

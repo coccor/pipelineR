@@ -7,11 +7,11 @@ pub enum PipelineError {
     #[error("transform error: {0}")]
     Transform(#[from] crate::dsl::error::TransformError),
 
-    /// A plugin process failed to start.
-    #[error("plugin spawn error: {0}")]
-    PluginSpawn(#[from] crate::plugin::PluginSpawnError),
+    /// A connector process failed to start.
+    #[error("connector spawn error: {0}")]
+    ConnectorSpawn(#[from] crate::connector::ConnectorSpawnError),
 
-    /// A gRPC communication error with a plugin.
+    /// A gRPC communication error with a connector.
     #[error("grpc error: {0}")]
     Grpc(#[from] tonic::Status),
 
@@ -19,11 +19,11 @@ pub enum PipelineError {
     #[error("transport error: {0}")]
     Transport(#[from] tonic::transport::Error),
 
-    /// The source plugin returned no data or an invalid stream.
+    /// The source connector returned no data or an invalid stream.
     #[error("source error: {0}")]
     Source(String),
 
-    /// A sink plugin failed during load.
+    /// A sink connector failed during load.
     #[error("sink error: {0}")]
     Sink(String),
 

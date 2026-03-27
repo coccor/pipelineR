@@ -1,6 +1,6 @@
 //! gRPC service bridge for the [`Source`] trait.
 //!
-//! Wraps any `Source` implementation so it can be served as a tonic `SourcePlugin` gRPC service.
+//! Wraps any `Source` implementation so it can be served as a tonic `SourceConnector` gRPC service.
 
 use std::sync::Arc;
 
@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use tonic::{Request, Response, Status};
 
-use pipeliner_proto::pipeliner::v1::source_plugin_server::SourcePlugin;
+use pipeliner_proto::pipeliner::v1::source_connector_server::SourceConnector;
 use pipeliner_proto::{
     DiscoverPartitionsRequest, DiscoverSchemaRequest, Empty, ExtractRequest, ExtractResponse,
     PartitionsResponse, SchemaResponse, SourceConfig, SourceDescriptor, ValidationResult,
@@ -31,10 +31,10 @@ impl<S: Source> GrpcSourceService<S> {
 }
 
 #[tonic::async_trait]
-impl<S: Source> SourcePlugin for GrpcSourceService<S> {
+impl<S: Source> SourceConnector for GrpcSourceService<S> {
     type ExtractStream = ReceiverStream<Result<ExtractResponse, Status>>;
 
-    /// Return metadata about this source plugin.
+    /// Return metadata about this source connector.
     async fn describe(
         &self,
         _request: Request<Empty>,

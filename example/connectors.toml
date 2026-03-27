@@ -1,0 +1,3 @@
+[connectors.file]
+path = "target/release/pipeliner-connector-file"
+description = "File source and sink (CSV, JSON, Parquet)"

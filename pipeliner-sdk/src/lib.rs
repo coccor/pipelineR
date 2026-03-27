@@ -1,4 +1,4 @@
-//! Plugin SDK for pipelineR — provides traits, error types, and helpers for source/sink plugins.
+//! Connector SDK for pipelineR — provides traits, error types, and helpers for source/sink connectors.
 
 pub mod config;
 pub mod convert;
@@ -13,6 +13,6 @@ pub use config::parse_config;
 pub use error::*;
 pub use grpc_sink::GrpcSinkService;
 pub use grpc_source::GrpcSourceService;
-pub use server::{run_plugin, run_sink_plugin, run_source_plugin};
+pub use server::{run_connector, run_sink_connector, run_source_connector};
 pub use sink::{LoadResult, Sink};
 pub use source::Source;

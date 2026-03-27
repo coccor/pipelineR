@@ -16,7 +16,7 @@ use crate::convert::{core_batch_to_proto, proto_batch_to_core};
 use crate::dsl::ast::TransformStep;
 use crate::dsl::step::execute_step;
 use crate::error::PipelineError;
-use crate::plugin::{SinkPluginClientWrapper, SourcePluginClientWrapper};
+use crate::connector::{SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 
 /// Bounded channel capacity between pipeline stages.
 const STAGE_CHANNEL_CAPACITY: usize = 32;
@@ -100,8 +100,8 @@ pub struct PipelineResult {
 
 /// A pipeline definition: source, transforms, and sinks connected over gRPC.
 pub struct PipelineDefinition {
-    /// The source plugin gRPC client.
-    pub source: SourcePluginClientWrapper,
+    /// The source connector gRPC client.
+    pub source: SourceConnectorClientWrapper,
     /// Source configuration (JSON-encoded).
     pub source_config: SourceConfig,
     /// Runtime parameters for the source (e.g., partition params).
@@ -109,7 +109,7 @@ pub struct PipelineDefinition {
     /// Ordered list of DSL transform steps to apply.
     pub transforms: Vec<TransformStep>,
     /// Sink plugin gRPC clients, one per configured sink.
-    pub sinks: Vec<SinkPluginClientWrapper>,
+    pub sinks: Vec<SinkConnectorClientWrapper>,
     /// Sink configurations, one per sink (parallel to `sinks`).
     pub sink_configs: Vec<SinkConfig>,
 }
@@ -246,7 +246,7 @@ pub async fn execute_pipeline_with(
 
 /// Extract from source and send batches to the transform stage.
 async fn run_source(
-    client: &mut SourcePluginClientWrapper,
+    client: &mut SourceConnectorClientWrapper,
     config: SourceConfig,
     params: RuntimeParams,
     tx: mpsc::Sender<ProtoRecordBatch>,
@@ -351,7 +351,7 @@ async fn run_transforms(
 /// Send data to a single sink via gRPC client-streaming.
 async fn run_sink(
     index: usize,
-    client: &mut SinkPluginClientWrapper,
+    client: &mut SinkConnectorClientWrapper,
     config: SinkConfig,
     mut rx: mpsc::Receiver<ProtoRecordBatch>,
     events: Option<RunEventSender>,

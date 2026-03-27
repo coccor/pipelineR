@@ -6,14 +6,14 @@ use tokio::sync::mpsc;
 
 use crate::error::{DiscoveryError, ExtractionError, ValidationError};
 
-/// Trait that source plugins implement.
+/// Trait that source connectors implement.
 ///
 /// A source is responsible for connecting to an external data system,
 /// discovering its schema and partitions, and extracting data as
 /// protobuf `RecordBatch` messages.
 #[async_trait]
 pub trait Source: Send + Sync + 'static {
-    /// Return metadata about this source plugin.
+    /// Return metadata about this source connector.
     fn describe(&self) -> SourceDescriptor;
 
     /// Validate the provided configuration.

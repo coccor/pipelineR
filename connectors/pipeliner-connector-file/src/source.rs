@@ -1,4 +1,4 @@
-//! File source plugin — implements the `Source` trait for CSV, JSON, and Parquet files.
+//! File source connector — implements the `Source` trait for CSV, JSON, and Parquet files.
 
 use std::path::{Path, PathBuf};
 
@@ -17,7 +17,7 @@ use crate::error::FileSourceError;
 use crate::json_reader;
 use crate::parquet_reader;
 
-/// The file source plugin.
+/// The file source connector.
 pub struct FileSource;
 
 impl FileSource {
@@ -71,7 +71,7 @@ impl Source for FileSource {
         SourceDescriptor {
             name: "file".to_string(),
             version: "0.1.0".to_string(),
-            description: "File source plugin — reads CSV, JSON, and Parquet files from local filesystem".to_string(),
+            description: "File source connector — reads CSV, JSON, and Parquet files from local filesystem".to_string(),
         }
     }
 

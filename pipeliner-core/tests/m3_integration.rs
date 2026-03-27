@@ -1,6 +1,6 @@
-//! M3 integration test: file source plugin (CSV) → DSL transforms → mock sink.
+//! M3 integration test: file source connector (CSV) → DSL transforms → mock sink.
 //!
-//! This test spawns the actual `pipeliner-plugin-file` binary, reads a CSV file
+//! This test spawns the actual `pipeliner-connector-file` binary, reads a CSV file
 //! through the gRPC protocol, applies transforms, and sends to a mock sink.
 
 use std::io::Write;
@@ -15,9 +15,9 @@ use tonic::transport::Server;
 
 use pipeliner_core::dsl::parser::parse_step;
 use pipeliner_core::dsl::step::execute_step;
-use pipeliner_core::plugin::{PluginProcess, SourcePluginClientWrapper};
+use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::record::{Record, Value};
-use pipeliner_proto::pipeliner::v1::sink_plugin_server::SinkPluginServer;
+use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnectorServer;
 use pipeliner_proto::{
     RecordBatch as ProtoRecordBatch, RuntimeParams, SchemaRequirementResponse, SchemaResponse,
     SinkConfig, SinkDescriptor, SourceConfig,
@@ -75,10 +75,10 @@ impl Sink for MockSink {
 }
 
 // ---------------------------------------------------------------------------
-// Helper: find the compiled plugin binary
+// Helper: find the compiled connector binary
 // ---------------------------------------------------------------------------
 
-fn plugin_binary_path() -> String {
+fn connector_binary_path() -> String {
     // The binary is in target/debug/ when running tests.
     let mut path = std::env::current_exe()
         .expect("current_exe")
@@ -87,7 +87,7 @@ fn plugin_binary_path() -> String {
         .parent()
         .expect("parent")
         .to_path_buf();
-    path.push("pipeliner-plugin-file");
+    path.push("pipeliner-connector-file");
     path.to_str().expect("path to string").to_string()
 }
 
@@ -108,18 +108,18 @@ async fn csv_source_extract_transform_to_mock_sink() {
         writeln!(f, "Carol,100.00,true").unwrap();
     }
 
-    // --- Spawn the file source plugin binary ---
-    let mut plugin = PluginProcess::spawn("file", &plugin_binary_path())
+    // --- Spawn the file source connector binary ---
+    let mut plugin = ConnectorProcess::spawn("file", &connector_binary_path())
         .await
-        .expect("failed to spawn file plugin");
+        .expect("failed to spawn file connector");
 
     // Small delay for the server to be ready.
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     // --- Connect gRPC client ---
-    let mut source_client = SourcePluginClientWrapper::connect(plugin.address())
+    let mut source_client = SourceConnectorClientWrapper::connect(plugin.address())
         .await
-        .expect("failed to connect to file plugin");
+        .expect("failed to connect to file connector");
 
     // --- Describe ---
     let desc = source_client.describe().await.unwrap();
@@ -220,7 +220,7 @@ async fn csv_source_extract_transform_to_mock_sink() {
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(SinkPluginServer::new(GrpcSinkService::new(mock_sink)))
+            .add_service(SinkConnectorServer::new(GrpcSinkService::new(mock_sink)))
             .serve_with_incoming(TcpListenerStream::new(sink_listener))
             .await
             .unwrap();
@@ -229,7 +229,7 @@ async fn csv_source_extract_transform_to_mock_sink() {
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let mut sink_client =
-        pipeliner_core::plugin::SinkPluginClientWrapper::connect(format!("http://{sink_addr}"))
+        pipeliner_core::connector::SinkConnectorClientWrapper::connect(format!("http://{sink_addr}"))
             .await
             .unwrap();
 
@@ -282,13 +282,13 @@ async fn json_source_schema_discovery_and_extract() {
     }
 
     // --- Spawn plugin ---
-    let mut plugin = PluginProcess::spawn("file", &plugin_binary_path())
+    let mut plugin = ConnectorProcess::spawn("file", &connector_binary_path())
         .await
-        .expect("failed to spawn file plugin");
+        .expect("failed to spawn file connector");
 
     tokio::time::sleep(Duration::from_millis(200)).await;
 
-    let mut client = SourcePluginClientWrapper::connect(plugin.address())
+    let mut client = SourceConnectorClientWrapper::connect(plugin.address())
         .await
         .unwrap();
 

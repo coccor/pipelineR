@@ -7,10 +7,10 @@ use clap::{Parser, Subcommand};
 use tracing::{error, info};
 
 use pipeliner_core::config::{
-    build_pipeline, build_runtime_params, load_pipeline_config, load_plugin_registry,
-    resolve_plugin_binary, validate_config,
+    build_pipeline, build_runtime_params, load_pipeline_config, load_connector_registry,
+    resolve_connector_binary, validate_config,
 };
-use pipeliner_core::plugin::{PluginProcess, SourcePluginClientWrapper};
+use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::execute_pipeline;
 use pipeliner_proto::SourceConfig;
 
@@ -18,9 +18,9 @@ use pipeliner_proto::SourceConfig;
 #[derive(Parser)]
 #[command(name = "pipeliner", version, about)]
 struct Cli {
-    /// Path to plugins.toml registry file.
-    #[arg(long, default_value = "plugins.toml")]
-    plugins_file: PathBuf,
+    /// Path to connectors.toml registry file.
+    #[arg(long, default_value = "connectors.toml")]
+    connectors_file: PathBuf,
 
     /// Log level (trace, debug, info, warn, error).
     #[arg(long, default_value = "info")]
@@ -71,16 +71,16 @@ enum Commands {
         #[arg(long, default_value = "50051")]
         port: u16,
     },
-    /// Plugin management commands.
-    Plugins {
+    /// Connector management commands.
+    Connectors {
         #[command(subcommand)]
-        command: PluginsCommands,
+        command: ConnectorsCommands,
     },
 }
 
 #[derive(Subcommand)]
-enum PluginsCommands {
-    /// List registered plugins.
+enum ConnectorsCommands {
+    /// List registered connectors.
     List,
 }
 
@@ -115,20 +115,20 @@ async fn main() -> ExitCode {
 
     match cli.command {
         Commands::Run { pipeline, params } => {
-            cmd_run(&pipeline, &params, &cli.plugins_file).await
+            cmd_run(&pipeline, &params, &cli.connectors_file).await
         }
         Commands::Validate { pipeline } => {
-            cmd_validate(&pipeline, &cli.plugins_file)
+            cmd_validate(&pipeline, &cli.connectors_file)
         }
         Commands::Schema { pipeline, params } => {
-            cmd_schema(&pipeline, &params, &cli.plugins_file).await
+            cmd_schema(&pipeline, &params, &cli.connectors_file).await
         }
         Commands::Partitions { pipeline, params } => {
-            cmd_partitions(&pipeline, &params, &cli.plugins_file).await
+            cmd_partitions(&pipeline, &params, &cli.connectors_file).await
         }
-        Commands::Serve { port } => cmd_serve(port, &cli.plugins_file).await,
-        Commands::Plugins { command } => match command {
-            PluginsCommands::List => cmd_plugins_list(&cli.plugins_file),
+        Commands::Serve { port } => cmd_serve(port, &cli.connectors_file).await,
+        Commands::Connectors { command } => match command {
+            ConnectorsCommands::List => cmd_connectors_list(&cli.connectors_file),
         },
     }
 }
@@ -137,7 +137,7 @@ async fn main() -> ExitCode {
 async fn cmd_run(
     pipeline_path: &Path,
     params: &[(String, String)],
-    plugins_file: &Path,
+    connectors_file: &Path,
 ) -> ExitCode {
     let config = match load_pipeline_config(pipeline_path) {
         Ok(c) => c,
@@ -147,10 +147,10 @@ async fn cmd_run(
         }
     };
 
-    let registry = match load_plugin_registry(plugins_file) {
+    let registry = match load_connector_registry(connectors_file) {
         Ok(r) => r,
         Err(e) => {
-            error!("plugin registry error: {e}");
+            error!("connector registry error: {e}");
             return ExitCode::from(2);
         }
     };
@@ -202,7 +202,7 @@ async fn cmd_run(
 }
 
 /// Validate a pipeline config without executing it.
-fn cmd_validate(pipeline_path: &Path, plugins_file: &Path) -> ExitCode {
+fn cmd_validate(pipeline_path: &Path, connectors_file: &Path) -> ExitCode {
     let config = match load_pipeline_config(pipeline_path) {
         Ok(c) => c,
         Err(e) => {
@@ -211,10 +211,10 @@ fn cmd_validate(pipeline_path: &Path, plugins_file: &Path) -> ExitCode {
         }
     };
 
-    let registry = match load_plugin_registry(plugins_file) {
+    let registry = match load_connector_registry(connectors_file) {
         Ok(r) => r,
         Err(e) => {
-            error!("plugin registry error: {e}");
+            error!("connector registry error: {e}");
             return ExitCode::from(2);
         }
     };
@@ -235,7 +235,7 @@ fn cmd_validate(pipeline_path: &Path, plugins_file: &Path) -> ExitCode {
 async fn cmd_schema(
     pipeline_path: &Path,
     params: &[(String, String)],
-    plugins_file: &Path,
+    connectors_file: &Path,
 ) -> ExitCode {
     let config = match load_pipeline_config(pipeline_path) {
         Ok(c) => c,
@@ -245,41 +245,41 @@ async fn cmd_schema(
         }
     };
 
-    let registry = match load_plugin_registry(plugins_file) {
+    let registry = match load_connector_registry(connectors_file) {
         Ok(r) => r,
         Err(e) => {
-            error!("plugin registry error: {e}");
+            error!("connector registry error: {e}");
             return ExitCode::from(2);
         }
     };
 
-    let source_binary = match resolve_plugin_binary(&config.source.plugin, &registry) {
+    let source_binary = match resolve_connector_binary(&config.source.connector, &registry) {
         Ok(p) => p,
         Err(e) => {
-            error!("source plugin: {e}");
+            error!("source connector: {e}");
             return ExitCode::from(2);
         }
     };
 
-    let mut process = match PluginProcess::spawn(
-        &config.source.plugin,
+    let mut process = match ConnectorProcess::spawn(
+        &config.source.connector,
         source_binary.to_str().unwrap_or_default(),
     )
     .await
     {
         Ok(p) => p,
         Err(e) => {
-            error!("failed to spawn source plugin: {e}");
+            error!("failed to spawn source connector: {e}");
             return ExitCode::from(1);
         }
     };
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let mut client = match SourcePluginClientWrapper::connect(process.address()).await {
+    let mut client = match SourceConnectorClientWrapper::connect(process.address()).await {
         Ok(c) => c,
         Err(e) => {
-            error!("failed to connect to source plugin: {e}");
+            error!("failed to connect to source connector: {e}");
             process.kill().await.ok();
             return ExitCode::from(1);
         }
@@ -319,7 +319,7 @@ async fn cmd_schema(
 async fn cmd_partitions(
     pipeline_path: &Path,
     params: &[(String, String)],
-    plugins_file: &Path,
+    connectors_file: &Path,
 ) -> ExitCode {
     let config = match load_pipeline_config(pipeline_path) {
         Ok(c) => c,
@@ -329,41 +329,41 @@ async fn cmd_partitions(
         }
     };
 
-    let registry = match load_plugin_registry(plugins_file) {
+    let registry = match load_connector_registry(connectors_file) {
         Ok(r) => r,
         Err(e) => {
-            error!("plugin registry error: {e}");
+            error!("connector registry error: {e}");
             return ExitCode::from(2);
         }
     };
 
-    let source_binary = match resolve_plugin_binary(&config.source.plugin, &registry) {
+    let source_binary = match resolve_connector_binary(&config.source.connector, &registry) {
         Ok(p) => p,
         Err(e) => {
-            error!("source plugin: {e}");
+            error!("source connector: {e}");
             return ExitCode::from(2);
         }
     };
 
-    let mut process = match PluginProcess::spawn(
-        &config.source.plugin,
+    let mut process = match ConnectorProcess::spawn(
+        &config.source.connector,
         source_binary.to_str().unwrap_or_default(),
     )
     .await
     {
         Ok(p) => p,
         Err(e) => {
-            error!("failed to spawn source plugin: {e}");
+            error!("failed to spawn source connector: {e}");
             return ExitCode::from(1);
         }
     };
 
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let mut client = match SourcePluginClientWrapper::connect(process.address()).await {
+    let mut client = match SourceConnectorClientWrapper::connect(process.address()).await {
         Ok(c) => c,
         Err(e) => {
-            error!("failed to connect to source plugin: {e}");
+            error!("failed to connect to source connector: {e}");
             process.kill().await.ok();
             return ExitCode::from(1);
         }
@@ -400,23 +400,23 @@ async fn cmd_partitions(
     ExitCode::SUCCESS
 }
 
-/// List registered plugins from the plugin registry.
-fn cmd_plugins_list(plugins_file: &Path) -> ExitCode {
-    let registry = match load_plugin_registry(plugins_file) {
+/// List registered connectors from the connector registry.
+fn cmd_connectors_list(connectors_file: &Path) -> ExitCode {
+    let registry = match load_connector_registry(connectors_file) {
         Ok(r) => r,
         Err(e) => {
-            error!("plugin registry error: {e}");
+            error!("connector registry error: {e}");
             return ExitCode::from(2);
         }
     };
 
-    if registry.plugins.is_empty() {
-        println!("No plugins registered.");
-        println!("Create a plugins.toml file or use --plugins-file to specify one.");
+    if registry.connectors.is_empty() {
+        println!("No connectors registered.");
+        println!("Create a connectors.toml file or use --plugins-file to specify one.");
     } else {
         println!("{name:<20} {path:<40} DESCRIPTION", name = "NAME", path = "PATH");
         println!("{}", "-".repeat(80));
-        for (name, entry) in &registry.plugins {
+        for (name, entry) in &registry.connectors {
             println!("{name:<20} {path:<40} {desc}", path = entry.path, desc = entry.description);
         }
     }
@@ -425,11 +425,11 @@ fn cmd_plugins_list(plugins_file: &Path) -> ExitCode {
 }
 
 /// Start the gRPC server in sidecar mode.
-async fn cmd_serve(port: u16, plugins_file: &Path) -> ExitCode {
-    let server = match pipeliner_core::server::PipelineRServer::from_registry_path(plugins_file) {
+async fn cmd_serve(port: u16, connectors_file: &Path) -> ExitCode {
+    let server = match pipeliner_core::server::PipelineRServer::from_registry_path(connectors_file) {
         Ok(s) => s,
         Err(e) => {
-            error!("failed to load plugin registry: {e}");
+            error!("failed to load connector registry: {e}");
             return ExitCode::from(2);
         }
     };

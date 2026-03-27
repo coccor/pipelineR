@@ -1,8 +1,8 @@
 //! Pipeline configuration loader.
 //!
 //! Parses TOML pipeline files into typed config structs, performs environment
-//! variable substitution (`${VAR_NAME}`), and resolves plugin names to binary paths
-//! via a plugin registry (`plugins.toml`).
+//! variable substitution (`${VAR_NAME}`), and resolves connector names to binary paths
+//! via a connector registry (`connectors.toml`).
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -12,8 +12,8 @@ use serde::Deserialize;
 
 use crate::dsl::parser::parse_step;
 use crate::error::PipelineError;
-use crate::plugin::{
-    PluginProcess, SinkPluginClientWrapper, SourcePluginClientWrapper,
+use crate::connector::{
+    ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper,
 };
 use crate::runtime::PipelineDefinition;
 use pipeliner_proto::{RuntimeParams, SinkConfig, SourceConfig};
@@ -27,12 +27,12 @@ use pipeliner_proto::{RuntimeParams, SinkConfig, SourceConfig};
 pub struct PipelineConfig {
     /// Pipeline metadata.
     pub pipeline: PipelineMeta,
-    /// Source plugin specification.
+    /// Source connector specification.
     pub source: SourceSpec,
     /// Transform step groups (each `[[transforms]]` entry).
     #[serde(default)]
     pub transforms: Vec<TransformSpec>,
-    /// One or more sink plugin specifications.
+    /// One or more sink connector specifications.
     #[serde(default)]
     pub sinks: Vec<SinkSpec>,
     /// Optional dead-letter sink.
@@ -49,12 +49,12 @@ pub struct PipelineMeta {
     pub description: String,
 }
 
-/// Source plugin specification.
+/// Source connector specification.
 #[derive(Debug, Deserialize)]
 pub struct SourceSpec {
-    /// Plugin name (must match an entry in the plugin registry).
-    pub plugin: String,
-    /// Arbitrary plugin-specific configuration (serialized to JSON for the plugin).
+    /// Connector name (must match an entry in the connector registry).
+    pub connector: String,
+    /// Arbitrary connector-specific configuration (serialized to JSON for the connector).
     #[serde(default = "default_toml_table")]
     pub config: toml::Value,
 }
@@ -73,32 +73,32 @@ pub struct TransformSpec {
     pub steps: Vec<String>,
 }
 
-/// Sink plugin specification.
+/// Sink connector specification.
 #[derive(Debug, Deserialize)]
 pub struct SinkSpec {
-    /// Plugin name (must match an entry in the plugin registry).
-    pub plugin: String,
-    /// Arbitrary plugin-specific configuration (serialized to JSON for the plugin).
+    /// Connector name (must match an entry in the connector registry).
+    pub connector: String,
+    /// Arbitrary connector-specific configuration (serialized to JSON for the connector).
     #[serde(default = "default_toml_table")]
     pub config: toml::Value,
 }
 
 // ---------------------------------------------------------------------------
-// Plugin registry (plugins.toml)
+// Connector registry (connectors.toml)
 // ---------------------------------------------------------------------------
 
-/// Plugin registry loaded from `plugins.toml`.
+/// Connector registry loaded from `connectors.toml`.
 #[derive(Debug, Deserialize, Default, Clone)]
-pub struct PluginRegistry {
-    /// Map of plugin name → plugin entry.
+pub struct ConnectorRegistry {
+    /// Map of connector name → connector entry.
     #[serde(default)]
-    pub plugins: HashMap<String, PluginEntry>,
+    pub connectors: HashMap<String, ConnectorEntry>,
 }
 
-/// A single plugin entry in the registry.
+/// A single connector entry in the registry.
 #[derive(Debug, Deserialize, Clone)]
-pub struct PluginEntry {
-    /// Path to the plugin binary.
+pub struct ConnectorEntry {
+    /// Path to the connector binary.
     pub path: String,
     /// Optional description.
     #[serde(default)]
@@ -185,37 +185,37 @@ pub fn parse_pipeline_config(toml_str: &str) -> Result<PipelineConfig, ConfigErr
     Ok(config)
 }
 
-/// Load the plugin registry from a `plugins.toml` file.
+/// Load the connector registry from a `connectors.toml` file.
 ///
 /// If the file does not exist, returns an empty registry.
-pub fn load_plugin_registry(path: &Path) -> Result<PluginRegistry, ConfigError> {
+pub fn load_connector_registry(path: &Path) -> Result<ConnectorRegistry, ConfigError> {
     if !path.exists() {
-        return Ok(PluginRegistry::default());
+        return Ok(ConnectorRegistry::default());
     }
     let content = std::fs::read_to_string(path).map_err(|e| ConfigError::IoError {
         path: path.to_path_buf(),
         message: e.to_string(),
     })?;
-    let registry: PluginRegistry =
+    let registry: ConnectorRegistry =
         toml::from_str(&content).map_err(|e| ConfigError::ParseError(e.to_string()))?;
     Ok(registry)
 }
 
-/// Resolve a plugin name to a binary path using the registry.
+/// Resolve a connector name to a binary path using the registry.
 ///
 /// Falls back to searching for `pipeliner-plugin-<name>` in the same directory
 /// as the current executable if the registry doesn't have an entry.
-pub fn resolve_plugin_binary(
+pub fn resolve_connector_binary(
     name: &str,
-    registry: &PluginRegistry,
+    registry: &ConnectorRegistry,
 ) -> Result<PathBuf, ConfigError> {
     // Check registry first.
-    if let Some(entry) = registry.plugins.get(name) {
+    if let Some(entry) = registry.connectors.get(name) {
         let path = PathBuf::from(&entry.path);
         if path.exists() {
             return Ok(path);
         }
-        return Err(ConfigError::PluginNotFound {
+        return Err(ConfigError::ConnectorNotFound {
             name: name.to_string(),
             message: format!("registry path does not exist: {}", entry.path),
         });
@@ -227,13 +227,13 @@ pub fn resolve_plugin_binary(
         .and_then(|p| p.parent().map(|d| d.to_path_buf()))
         .unwrap_or_else(|| PathBuf::from("."));
 
-    let binary_name = format!("pipeliner-plugin-{name}");
+    let binary_name = format!("pipeliner-connector-{name}");
     let candidate = exe_dir.join(&binary_name);
     if candidate.exists() {
         return Ok(candidate);
     }
 
-    Err(ConfigError::PluginNotFound {
+    Err(ConfigError::ConnectorNotFound {
         name: name.to_string(),
         message: format!(
             "not in registry and '{}' not found next to executable",
@@ -255,7 +255,7 @@ pub fn build_runtime_params(params: &[(String, String)]) -> RuntimeParams {
     RuntimeParams { params: map }
 }
 
-/// Convert a TOML value to a JSON string for passing to plugins.
+/// Convert a TOML value to a JSON string for passing to connectors.
 pub fn toml_value_to_json(value: &toml::Value) -> String {
     // Convert TOML value → serde_json::Value → string.
     let json = toml_to_json_value(value);
@@ -283,18 +283,18 @@ fn toml_to_json_value(value: &toml::Value) -> serde_json::Value {
     }
 }
 
-/// Spawned plugins that must be kept alive for the duration of a pipeline run.
+/// Spawned connectors that must be kept alive for the duration of a pipeline run.
 ///
-/// Dropping this struct kills all plugin processes.
-pub struct SpawnedPlugins {
-    /// Source plugin process.
-    pub source: PluginProcess,
-    /// Sink plugin processes (one per configured sink).
-    pub sinks: Vec<PluginProcess>,
+/// Dropping this struct kills all connector processes.
+pub struct SpawnedConnectors {
+    /// Source connector process.
+    pub source: ConnectorProcess,
+    /// Sink connector processes (one per configured sink).
+    pub sinks: Vec<ConnectorProcess>,
 }
 
-impl SpawnedPlugins {
-    /// Kill all plugin processes.
+impl SpawnedConnectors {
+    /// Kill all connector processes.
     pub async fn kill_all(&mut self) {
         self.source.kill().await.ok();
         for sink in &mut self.sinks {
@@ -303,26 +303,26 @@ impl SpawnedPlugins {
     }
 }
 
-/// Build a `PipelineDefinition` from a parsed config: spawn plugins, connect gRPC clients,
+/// Build a `PipelineDefinition` from a parsed config: spawn connectors, connect gRPC clients,
 /// parse transform steps.
 ///
-/// Returns the definition and the spawned plugin handles (caller must keep them alive).
+/// Returns the definition and the spawned connector handles (caller must keep them alive).
 pub async fn build_pipeline(
     config: &PipelineConfig,
-    registry: &PluginRegistry,
+    registry: &ConnectorRegistry,
     runtime_params: RuntimeParams,
-) -> Result<(PipelineDefinition, SpawnedPlugins), PipelineError> {
-    // Resolve and spawn source plugin.
-    let source_binary = resolve_plugin_binary(&config.source.plugin, registry)
+) -> Result<(PipelineDefinition, SpawnedConnectors), PipelineError> {
+    // Resolve and spawn source connector.
+    let source_binary = resolve_connector_binary(&config.source.connector, registry)
         .map_err(PipelineError::Config)?;
     let source_process =
-        PluginProcess::spawn(&config.source.plugin, source_binary.to_str().unwrap_or_default())
+        ConnectorProcess::spawn(&config.source.connector, source_binary.to_str().unwrap_or_default())
             .await?;
 
     // Small delay for the gRPC server to be ready.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-    let source_client = SourcePluginClientWrapper::connect(source_process.address()).await?;
+    let source_client = SourceConnectorClientWrapper::connect(source_process.address()).await?;
 
     // Build source config JSON.
     let source_config_json = toml_value_to_json(&config.source.config);
@@ -344,19 +344,19 @@ pub async fn build_pipeline(
         }
     }
 
-    // Resolve and spawn sink plugins.
+    // Resolve and spawn sink connectors.
     let mut sink_processes = Vec::new();
     let mut sink_clients = Vec::new();
     let mut sink_configs = Vec::new();
 
     for (i, sink_spec) in config.sinks.iter().enumerate() {
-        let sink_binary = resolve_plugin_binary(&sink_spec.plugin, registry)
+        let sink_binary = resolve_connector_binary(&sink_spec.connector, registry)
             .map_err(PipelineError::Config)?;
-        let label = format!("{}-sink-{}", sink_spec.plugin, i);
-        let process = PluginProcess::spawn(&label, sink_binary.to_str().unwrap_or_default()).await?;
+        let label = format!("{}-sink-{}", sink_spec.connector, i);
+        let process = ConnectorProcess::spawn(&label, sink_binary.to_str().unwrap_or_default()).await?;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let client = SinkPluginClientWrapper::connect(process.address()).await?;
+        let client = SinkConnectorClientWrapper::connect(process.address()).await?;
         let config_json = toml_value_to_json(&sink_spec.config);
 
         sink_processes.push(process);
@@ -375,7 +375,7 @@ pub async fn build_pipeline(
         sink_configs,
     };
 
-    let spawned = SpawnedPlugins {
+    let spawned = SpawnedConnectors {
         source: source_process,
         sinks: sink_processes,
     };
@@ -387,18 +387,18 @@ pub async fn build_pipeline(
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-/// Validate a pipeline config by parsing transforms and checking plugin availability.
+/// Validate a pipeline config by parsing transforms and checking connector availability.
 ///
-/// Does not spawn plugins — only checks that the config is structurally valid
-/// and plugins can be resolved.
+/// Does not spawn connectors — only checks that the config is structurally valid
+/// and connectors can be resolved.
 pub fn validate_config(
     config: &PipelineConfig,
-    registry: &PluginRegistry,
+    registry: &ConnectorRegistry,
 ) -> Vec<String> {
     let mut errors = Vec::new();
 
-    // Check source plugin exists.
-    if let Err(e) = resolve_plugin_binary(&config.source.plugin, registry) {
+    // Check source connector exists.
+    if let Err(e) = resolve_connector_binary(&config.source.connector, registry) {
         errors.push(format!("source: {e}"));
     }
 
@@ -414,16 +414,16 @@ pub fn validate_config(
         }
     }
 
-    // Check sink plugins exist.
+    // Check sink connectors exist.
     for (i, sink_spec) in config.sinks.iter().enumerate() {
-        if let Err(e) = resolve_plugin_binary(&sink_spec.plugin, registry) {
+        if let Err(e) = resolve_connector_binary(&sink_spec.connector, registry) {
             errors.push(format!("sink[{}]: {e}", i));
         }
     }
 
-    // Check dead-letter plugin exists.
+    // Check dead-letter connector exists.
     if let Some(dl) = &config.dead_letter {
-        if let Err(e) = resolve_plugin_binary(&dl.plugin, registry) {
+        if let Err(e) = resolve_connector_binary(&dl.connector, registry) {
             errors.push(format!("dead_letter: {e}"));
         }
     }
@@ -462,10 +462,10 @@ pub enum ConfigError {
         var: String,
     },
 
-    /// A plugin could not be found.
-    #[error("plugin '{name}' not found: {message}")]
-    PluginNotFound {
-        /// Plugin name.
+    /// A connector could not be found.
+    #[error("connector '{name}' not found: {message}")]
+    ConnectorNotFound {
+        /// Connector name.
         name: String,
         /// Details.
         message: String,
@@ -487,7 +487,7 @@ mod tests {
 name = "test"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "/tmp/input.csv"
 config.format = "csv"
 
@@ -499,17 +499,17 @@ steps = [
 ]
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/tmp/output.json"
 config.format = "json"
 "#;
         let config = parse_pipeline_config(toml).unwrap();
         assert_eq!(config.pipeline.name, "test");
-        assert_eq!(config.source.plugin, "file");
+        assert_eq!(config.source.connector, "file");
         assert_eq!(config.transforms.len(), 1);
         assert_eq!(config.transforms[0].steps.len(), 2);
         assert_eq!(config.sinks.len(), 1);
-        assert_eq!(config.sinks[0].plugin, "file");
+        assert_eq!(config.sinks[0].connector, "file");
         assert!(config.dead_letter.is_none());
     }
 
@@ -520,19 +520,19 @@ config.format = "json"
 name = "multi-sink"
 
 [source]
-plugin = "file"
+connector = "file"
 
 [[transforms]]
 name = "noop"
 steps = []
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/tmp/a.json"
 config.format = "json"
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/tmp/b.csv"
 config.format = "csv"
 "#;
@@ -547,7 +547,7 @@ config.format = "csv"
 name = "bad"
 
 [source]
-plugin = "file"
+connector = "file"
 "#;
         let err = parse_pipeline_config(toml).unwrap_err();
         assert!(err.to_string().contains("at least one [[sinks]]"));
@@ -588,19 +588,19 @@ options.has_header = true
     }
 
     #[test]
-    fn plugin_registry_parsing() {
+    fn connector_registry_parsing() {
         let toml = r#"
-[plugins.file]
-path = "/usr/local/bin/pipeliner-plugin-file"
+[connectors.file]
+path = "/usr/local/bin/pipeliner-connector-file"
 description = "File source and sink"
 
-[plugins.sql]
-path = "/usr/local/bin/pipeliner-plugin-sql"
+[connectors.sql]
+path = "/usr/local/bin/pipeliner-connector-sql"
 "#;
-        let registry: PluginRegistry = toml::from_str(toml).unwrap();
-        assert_eq!(registry.plugins.len(), 2);
-        assert!(registry.plugins.contains_key("file"));
-        assert!(registry.plugins.contains_key("sql"));
+        let registry: ConnectorRegistry = toml::from_str(toml).unwrap();
+        assert_eq!(registry.connectors.len(), 2);
+        assert!(registry.connectors.contains_key("file"));
+        assert!(registry.connectors.contains_key("sql"));
     }
 
     #[test]

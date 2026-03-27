@@ -1,5 +1,5 @@
-use pipeliner_proto::pipeliner::v1::source_plugin_client::SourcePluginClient;
-use pipeliner_proto::pipeliner::v1::sink_plugin_client::SinkPluginClient;
+use pipeliner_proto::pipeliner::v1::source_connector_client::SourceConnectorClient;
+use pipeliner_proto::pipeliner::v1::sink_connector_client::SinkConnectorClient;
 use pipeliner_proto::pipeliner::v1::{
     DiscoverPartitionsRequest, DiscoverSchemaRequest, Empty, ExtractRequest, ExtractResponse,
     LoadRequest, LoadResult, PartitionsResponse, SchemaRequirementResponse, SchemaResponse,
@@ -11,18 +11,18 @@ use tonic::Streaming;
 
 const MAX_MESSAGE_SIZE: usize = 64 * 1024 * 1024;
 
-/// Client wrapper for communicating with a source plugin over gRPC.
+/// Client wrapper for communicating with a source connector over gRPC.
 ///
-/// Named `SourcePluginClientWrapper` to avoid collision with the tonic-generated
-/// `SourcePluginClient<Channel>`.
-pub struct SourcePluginClientWrapper {
-    client: SourcePluginClient<Channel>,
+/// Named `SourceConnectorClientWrapper` to avoid collision with the tonic-generated
+/// `SourceConnectorClient<Channel>`.
+pub struct SourceConnectorClientWrapper {
+    client: SourceConnectorClient<Channel>,
 }
 
-impl SourcePluginClientWrapper {
-    /// Connect to a source plugin at the given address (e.g. `http://127.0.0.1:50051`).
+impl SourceConnectorClientWrapper {
+    /// Connect to a source connector at the given address (e.g. `http://127.0.0.1:50051`).
     pub async fn connect(addr: String) -> Result<Self, tonic::transport::Error> {
-        let client = SourcePluginClient::connect(addr).await.map(|c| {
+        let client = SourceConnectorClient::connect(addr).await.map(|c| {
             c.max_decoding_message_size(MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(MAX_MESSAGE_SIZE)
         })?;
@@ -88,25 +88,25 @@ impl SourcePluginClientWrapper {
     }
 }
 
-/// Client wrapper for communicating with a sink plugin over gRPC.
+/// Client wrapper for communicating with a sink connector over gRPC.
 ///
-/// Named `SinkPluginClientWrapper` to avoid collision with the tonic-generated
-/// `SinkPluginClient<Channel>`.
-pub struct SinkPluginClientWrapper {
-    client: SinkPluginClient<Channel>,
+/// Named `SinkConnectorClientWrapper` to avoid collision with the tonic-generated
+/// `SinkConnectorClient<Channel>`.
+pub struct SinkConnectorClientWrapper {
+    client: SinkConnectorClient<Channel>,
 }
 
-impl SinkPluginClientWrapper {
-    /// Connect to a sink plugin at the given address (e.g. `http://127.0.0.1:50052`).
+impl SinkConnectorClientWrapper {
+    /// Connect to a sink connector at the given address (e.g. `http://127.0.0.1:50052`).
     pub async fn connect(addr: String) -> Result<Self, tonic::transport::Error> {
-        let client = SinkPluginClient::connect(addr).await.map(|c| {
+        let client = SinkConnectorClient::connect(addr).await.map(|c| {
             c.max_decoding_message_size(MAX_MESSAGE_SIZE)
                 .max_encoding_message_size(MAX_MESSAGE_SIZE)
         })?;
         Ok(Self { client })
     }
 
-    /// Retrieve the sink plugin descriptor (name, version, description).
+    /// Retrieve the sink connector descriptor (name, version, description).
     pub async fn describe(&mut self) -> Result<SinkDescriptor, tonic::Status> {
         self.client
             .describe(Empty {})

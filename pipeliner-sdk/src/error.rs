@@ -1,4 +1,4 @@
-//! Error types for plugin SDK operations.
+//! Error types for connector SDK operations.
 
 use thiserror::Error;
 

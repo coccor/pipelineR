@@ -1,0 +1,27 @@
+[pipeline]
+name = "sales_etl"
+description = "Filter active products with positive sales, coerce types, rename fields"
+
+[source]
+connector = "file"
+config.path = "example/sales.csv"
+config.format = "csv"
+
+[[transforms]]
+name = "clean_and_filter"
+steps = [
+    'set(.amount, to_float(.amount))',
+    'set(.quantity, to_int(.quantity))',
+    'rename(.active, .is_active)',
+    'where(.amount > 0.0)',
+]
+
+[[sinks]]
+connector = "file"
+config.path = "example/output.jsonl"
+config.format = "json"
+
+[[sinks]]
+connector = "file"
+config.path = "example/output.csv"
+config.format = "csv"

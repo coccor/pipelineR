@@ -34,7 +34,7 @@ message DiscoverPartitionsRequest {
   RuntimeParams params = 2;
 }
 
-service SourcePlugin {
+service SourceConnector {
   rpc Describe(Empty) returns (SourceDescriptor);
   rpc Validate(SourceConfig) returns (ValidationResult);
   rpc DiscoverSchema(DiscoverSchemaRequest) returns (SchemaResponse);
@@ -80,7 +80,7 @@ message LoadResult {
   string error_message = 3;
 }
 
-service SinkPlugin {
+service SinkConnector {
   rpc Describe(Empty) returns (SinkDescriptor);
   rpc Validate(SinkConfig) returns (ValidationResult);
   rpc SchemaRequirement(Empty) returns (SchemaRequirementResponse);

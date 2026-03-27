@@ -1,0 +1,11 @@
+id,product,amount,quantity,region,active
+1,Widget A,29.99,10,North,true
+2,Widget B,-5.00,3,South,false
+3,Gadget X,149.50,1,North,true
+4,Widget A,0.00,0,East,true
+5,Gadget Y,75.25,5,West,true
+6,Widget C,-12.30,2,South,false
+7,Gadget X,200.00,8,North,true
+8,Widget B,45.00,15,East,true
+9,Gadget Z,999.99,1,West,true
+10,Widget A,10.50,7,South,true

@@ -1,8 +1,8 @@
-//! Error types for the file plugin (source and sink).
+//! Error types for the file connector (source and sink).
 
 use thiserror::Error;
 
-/// Errors produced by the file source plugin.
+/// Errors produced by the file source connector.
 #[derive(Debug, Error)]
 pub enum FileSourceError {
     /// An I/O error occurred (file not found, permission denied, etc.).
@@ -16,7 +16,7 @@ pub enum FileSourceError {
     NoFilesMatched(String),
 }
 
-/// Errors produced by the file sink plugin.
+/// Errors produced by the file sink connector.
 #[derive(Debug, Error)]
 pub enum FileSinkError {
     /// An I/O error occurred writing the output file.

@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::time::Duration;
 
-use pipeliner_core::config::{PluginEntry, PluginRegistry};
+use pipeliner_core::config::{ConnectorEntry, ConnectorRegistry};
 use pipeliner_core::server::PipelineRServer;
 use pipeliner_proto::pipeliner::v1::pipeline_r_client::PipelineRClient;
 use pipeliner_proto::pipeliner::v1::{
@@ -23,8 +23,8 @@ use pipeliner_proto::pipeliner::v1::{
 };
 use tokio_stream::StreamExt;
 
-/// Find the compiled file plugin binary in the target directory.
-fn plugin_binary_path() -> String {
+/// Find the compiled file connector binary in the target directory.
+fn connector_binary_path() -> String {
     let mut path = std::env::current_exe()
         .expect("current_exe")
         .parent()
@@ -32,21 +32,21 @@ fn plugin_binary_path() -> String {
         .parent()
         .expect("parent")
         .to_path_buf();
-    path.push("pipeliner-plugin-file");
+    path.push("pipeliner-connector-file");
     path.to_str().expect("path to string").to_string()
 }
 
-/// Build a plugin registry pointing to our compiled file plugin.
-fn test_registry() -> PluginRegistry {
-    let mut plugins = HashMap::new();
-    plugins.insert(
+/// Build a connector registry pointing to our compiled file connector.
+fn test_registry() -> ConnectorRegistry {
+    let mut connectors = HashMap::new();
+    connectors.insert(
         "file".to_string(),
-        PluginEntry {
-            path: plugin_binary_path(),
+        ConnectorEntry {
+            path: connector_binary_path(),
             description: "File source and sink".to_string(),
         },
     );
-    PluginRegistry { plugins }
+    ConnectorRegistry { connectors }
 }
 
 /// Start the PipelineR gRPC server on a random port and return the client + port.
@@ -89,7 +89,7 @@ fn test_pipeline_toml(csv_input: &str, json_output: &str) -> String {
 name = "integration_test"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "{input}"
 config.format = "csv"
 
@@ -101,7 +101,7 @@ steps = [
 ]
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "{output}"
 config.format = "json"
 "#,
@@ -189,7 +189,7 @@ async fn discover_schema() {
 name = "schema_test"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "{}"
 config.format = "csv"
 
@@ -198,7 +198,7 @@ name = "noop"
 steps = []
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/dev/null"
 config.format = "json"
 "#,
@@ -243,7 +243,7 @@ async fn discover_partitions() {
 name = "partitions_test"
 
 [source]
-plugin = "file"
+connector = "file"
 config.path = "{}"
 config.format = "csv"
 
@@ -252,7 +252,7 @@ name = "noop"
 steps = []
 
 [[sinks]]
-plugin = "file"
+connector = "file"
 config.path = "/dev/null"
 config.format = "json"
 "#,
@@ -272,7 +272,7 @@ config.format = "json"
         .unwrap()
         .into_inner();
 
-    // File plugin returns one partition per file.
+    // File connector returns one partition per file.
     assert!(!resp.partitions.is_empty());
 }
 

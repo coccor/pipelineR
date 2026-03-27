@@ -1,13 +1,13 @@
 //! gRPC service bridge for the [`Sink`] trait.
 //!
-//! Wraps any `Sink` implementation so it can be served as a tonic `SinkPlugin` gRPC service.
+//! Wraps any `Sink` implementation so it can be served as a tonic `SinkConnector` gRPC service.
 
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tonic::{Request, Response, Status, Streaming};
 
-use pipeliner_proto::pipeliner::v1::sink_plugin_server::SinkPlugin;
+use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnector;
 use pipeliner_proto::{
     load_request, Empty, LoadRequest, SchemaRequirementResponse, SinkConfig, SinkDescriptor,
     ValidationResult,
@@ -30,8 +30,8 @@ impl<K: Sink> GrpcSinkService<K> {
 }
 
 #[tonic::async_trait]
-impl<K: Sink> SinkPlugin for GrpcSinkService<K> {
-    /// Return metadata about this sink plugin.
+impl<K: Sink> SinkConnector for GrpcSinkService<K> {
+    /// Return metadata about this sink connector.
     async fn describe(
         &self,
         _request: Request<Empty>,

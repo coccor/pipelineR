@@ -1,10 +1,10 @@
 [package]
-name = "pipeliner-plugin-file"
+name = "pipeliner-connector-file"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "pipeliner-plugin-file"
+name = "pipeliner-connector-file"
 path = "src/main.rs"
 
 [dependencies]

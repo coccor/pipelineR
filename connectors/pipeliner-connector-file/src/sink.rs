@@ -1,4 +1,4 @@
-//! File sink plugin — implements the `Sink` trait for CSV and JSON output.
+//! File sink connector — implements the `Sink` trait for CSV and JSON output.
 
 use async_trait::async_trait;
 use pipeliner_proto::{SchemaRequirementResponse, SchemaResponse, SinkConfig, SinkDescriptor};
@@ -12,7 +12,7 @@ use crate::config::{FileSinkConfig, SinkFileFormat};
 use crate::csv_writer::CsvFileWriter;
 use crate::json_writer::JsonFileWriter;
 
-/// The file sink plugin.
+/// The file sink connector.
 pub struct FileSink;
 
 fn parse_sink_config(config: &SinkConfig) -> Result<FileSinkConfig, ValidationError> {
@@ -25,7 +25,7 @@ impl Sink for FileSink {
         SinkDescriptor {
             name: "file".to_string(),
             version: "0.1.0".to_string(),
-            description: "File sink plugin — writes CSV and JSON files to local filesystem"
+            description: "File sink connector — writes CSV and JSON files to local filesystem"
                 .to_string(),
         }
     }

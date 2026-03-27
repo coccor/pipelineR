@@ -7,12 +7,12 @@ use std::io::Write;
 use std::time::Duration;
 
 use pipeliner_core::dsl::parser::parse_step;
-use pipeliner_core::plugin::{PluginProcess, SinkPluginClientWrapper, SourcePluginClientWrapper};
+use pipeliner_core::connector::{ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::{execute_pipeline, PipelineDefinition};
 use pipeliner_proto::{RuntimeParams, SinkConfig, SourceConfig};
 
-/// Find the compiled file plugin binary in the target directory.
-fn plugin_binary_path() -> String {
+/// Find the compiled file connector binary in the target directory.
+fn connector_binary_path() -> String {
     let mut path = std::env::current_exe()
         .expect("current_exe")
         .parent()
@@ -20,7 +20,7 @@ fn plugin_binary_path() -> String {
         .parent()
         .expect("parent")
         .to_path_buf();
-    path.push("pipeliner-plugin-file");
+    path.push("pipeliner-connector-file");
     path.to_str().expect("path to string").to_string()
 }
 
@@ -41,33 +41,33 @@ async fn full_etl_pipeline_csv_to_json_and_csv() {
     let json_output = dir.path().join("output.jsonl");
     let csv_output = dir.path().join("output.csv");
 
-    // --- Spawn the file plugin (serves both source and sink) ---
+    // --- Spawn the file connector (serves both source and sink) ---
     // We need separate plugin instances for source and each sink (each is a separate gRPC server).
-    let mut source_plugin = PluginProcess::spawn("file-source", &plugin_binary_path())
+    let mut source_plugin = ConnectorProcess::spawn("file-source", &connector_binary_path())
         .await
-        .expect("failed to spawn source plugin");
-    let mut sink_json_plugin = PluginProcess::spawn("file-sink-json", &plugin_binary_path())
+        .expect("failed to spawn source connector");
+    let mut sink_json_plugin = ConnectorProcess::spawn("file-sink-json", &connector_binary_path())
         .await
-        .expect("failed to spawn json sink plugin");
-    let mut sink_csv_plugin = PluginProcess::spawn("file-sink-csv", &plugin_binary_path())
+        .expect("failed to spawn json sink connector");
+    let mut sink_csv_plugin = ConnectorProcess::spawn("file-sink-csv", &connector_binary_path())
         .await
-        .expect("failed to spawn csv sink plugin");
+        .expect("failed to spawn csv sink connector");
 
     // Small delay for servers to be ready.
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     // --- Connect gRPC clients ---
-    let source_client = SourcePluginClientWrapper::connect(source_plugin.address())
+    let source_client = SourceConnectorClientWrapper::connect(source_plugin.address())
         .await
-        .expect("failed to connect to source plugin");
+        .expect("failed to connect to source connector");
 
-    let sink_json_client = SinkPluginClientWrapper::connect(sink_json_plugin.address())
+    let sink_json_client = SinkConnectorClientWrapper::connect(sink_json_plugin.address())
         .await
-        .expect("failed to connect to json sink plugin");
+        .expect("failed to connect to json sink connector");
 
-    let sink_csv_client = SinkPluginClientWrapper::connect(sink_csv_plugin.address())
+    let sink_csv_client = SinkConnectorClientWrapper::connect(sink_csv_plugin.address())
         .await
-        .expect("failed to connect to csv sink plugin");
+        .expect("failed to connect to csv sink connector");
 
     // --- Define transform steps ---
     // 1. Coerce amount to float
@@ -178,19 +178,19 @@ async fn pipeline_with_all_records_filtered() {
 
     let json_output = dir.path().join("output.jsonl");
 
-    let mut source_plugin = PluginProcess::spawn("file-source", &plugin_binary_path())
+    let mut source_plugin = ConnectorProcess::spawn("file-source", &connector_binary_path())
         .await
         .expect("spawn");
-    let mut sink_plugin = PluginProcess::spawn("file-sink", &plugin_binary_path())
+    let mut sink_plugin = ConnectorProcess::spawn("file-sink", &connector_binary_path())
         .await
         .expect("spawn");
 
     tokio::time::sleep(Duration::from_millis(300)).await;
 
-    let source_client = SourcePluginClientWrapper::connect(source_plugin.address())
+    let source_client = SourceConnectorClientWrapper::connect(source_plugin.address())
         .await
         .unwrap();
-    let sink_client = SinkPluginClientWrapper::connect(sink_plugin.address())
+    let sink_client = SinkConnectorClientWrapper::connect(sink_plugin.address())
         .await
         .unwrap();
 

@@ -15,6 +15,7 @@ pipeliner-arrow-convert = { path = "../../pipeliner-arrow-convert" }
 async-trait = "0.1"
 arrow = { version = "54", default-features = false }
 chrono = "0.4"
+datafusion = "46"
 deltalake = { version = "0.25", features = ["datafusion"] }
 indexmap = "2"
 serde = { version = "1", features = ["derive"] }

@@ -3,7 +3,7 @@
 use serde::Deserialize;
 
 /// Supported SQL database drivers.
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq, Hash)]
 #[serde(rename_all = "lowercase")]
 pub enum SqlDriver {
     /// Microsoft SQL Server (via tiberius).

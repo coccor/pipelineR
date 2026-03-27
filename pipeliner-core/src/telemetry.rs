@@ -1,11 +1,12 @@
 //! OpenTelemetry telemetry initialization.
 //!
-//! Provides configuration and lifecycle management for OTel tracing with an
-//! OTLP exporter. The `[telemetry]` section in a pipeline TOML config controls
-//! whether tracing is enabled and where spans are exported.
+//! Provides configuration and lifecycle management for OTel tracing and metrics
+//! with OTLP exporters. The `[telemetry]` section in a pipeline TOML config
+//! controls whether telemetry is enabled and where spans/metrics are exported.
 
 use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::metrics as sdkmetrics;
 use opentelemetry_sdk::trace as sdktrace;
 use opentelemetry_sdk::Resource;
 
@@ -28,9 +29,9 @@ fn default_service_name() -> String {
     "pipeliner".to_string()
 }
 
-/// Initialize OpenTelemetry tracing with an OTLP exporter.
+/// Initialize OpenTelemetry tracing and metrics with OTLP exporters.
 ///
-/// Returns a guard that shuts down the tracer provider on drop.
+/// Returns a guard that shuts down the tracer and meter providers on drop.
 /// Returns `None` if telemetry is disabled or initialization fails.
 pub fn init_telemetry(config: &TelemetryConfig) -> Option<TelemetryGuard> {
     if !config.enabled {
@@ -43,36 +44,58 @@ pub fn init_telemetry(config: &TelemetryConfig) -> Option<TelemetryGuard> {
         .or_else(|| std::env::var("OTEL_EXPORTER_OTLP_ENDPOINT").ok())
         .unwrap_or_else(|| "http://localhost:4317".to_string());
 
-    let exporter = opentelemetry_otlp::SpanExporter::builder()
+    let resource = Resource::builder()
+        .with_attribute(KeyValue::new("service.name", config.service_name.clone()))
+        .build();
+
+    // --- Tracing ---
+    let span_exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_tonic()
+        .with_endpoint(endpoint.clone())
+        .build()
+        .ok()?;
+
+    let tracer_provider = sdktrace::SdkTracerProvider::builder()
+        .with_batch_exporter(span_exporter)
+        .with_resource(resource.clone())
+        .build();
+
+    opentelemetry::global::set_tracer_provider(tracer_provider.clone());
+
+    // --- Metrics ---
+    let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
         .build()
         .ok()?;
 
-    let resource = Resource::builder()
-        .with_attribute(KeyValue::new("service.name", config.service_name.clone()))
-        .build();
+    let metric_reader = sdkmetrics::PeriodicReader::builder(metric_exporter).build();
 
-    let provider = sdktrace::SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
+    let meter_provider = sdkmetrics::SdkMeterProvider::builder()
+        .with_reader(metric_reader)
         .with_resource(resource)
         .build();
 
-    opentelemetry::global::set_tracer_provider(provider.clone());
+    opentelemetry::global::set_meter_provider(meter_provider.clone());
 
     Some(TelemetryGuard {
-        provider: Some(provider),
+        tracer_provider: Some(tracer_provider),
+        meter_provider: Some(meter_provider),
     })
 }
 
-/// Guard that shuts down the OTel tracer provider on drop.
+/// Guard that shuts down the OTel tracer and meter providers on drop.
 pub struct TelemetryGuard {
-    provider: Option<sdktrace::SdkTracerProvider>,
+    tracer_provider: Option<sdktrace::SdkTracerProvider>,
+    meter_provider: Option<sdkmetrics::SdkMeterProvider>,
 }
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
-        if let Some(provider) = self.provider.take() {
+        if let Some(provider) = self.meter_provider.take() {
+            let _ = provider.shutdown();
+        }
+        if let Some(provider) = self.tracer_provider.take() {
             let _ = provider.shutdown();
         }
     }

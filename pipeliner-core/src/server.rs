@@ -346,11 +346,17 @@ impl PipelineR for PipelineRServer {
         let run_id_clone = run_id.clone();
         tokio::spawn(async move {
             let result = async {
+                let partition_key = runtime_params
+                    .params
+                    .get("partition_key")
+                    .cloned();
                 let proto_params = RuntimeParams {
                     params: runtime_params.params,
                 };
-                let (definition, spawned) =
+                let (mut definition, spawned) =
                     build_pipeline(&config, &registry, proto_params).await?;
+                definition.run_id = Some(run_id_clone.clone());
+                definition.partition_key = partition_key;
                 let result =
                     execute_pipeline_with(definition, cancel.clone(), Some(event_sender.clone()))
                         .await;
@@ -436,7 +442,7 @@ impl PipelineR for PipelineRServer {
         });
 
         Ok(Response::new(RunPipelineResponse {
-            run_id: run_id_clone,
+            run_id,
         }))
     }
 

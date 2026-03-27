@@ -11,7 +11,8 @@ use pipeliner_sdk::Source;
 use tokio::sync::mpsc;
 
 use crate::config::{PartitionStrategy, SqlSourceConfig};
-use crate::driver::{create_driver, map_sql_type_to_pipeliner};
+use crate::driver::map_sql_type_to_pipeliner;
+use crate::DRIVER_POOL;
 
 /// The SQL source connector.
 pub struct SqlSource;
@@ -100,7 +101,8 @@ impl Source for SqlSource {
         let cfg =
             parse_source_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
 
-        let driver = create_driver(&cfg.driver, &cfg.connection_string)
+        let driver = DRIVER_POOL
+            .get_or_create(&cfg.driver, &cfg.connection_string)
             .await
             .map_err(|e| DiscoveryError::Connection(e.to_string()))?;
 
@@ -232,7 +234,8 @@ impl Source for SqlSource {
         let cfg =
             parse_source_config(config).map_err(|e| ExtractionError::Failed(e.to_string()))?;
 
-        let driver = create_driver(&cfg.driver, &cfg.connection_string)
+        let driver = DRIVER_POOL
+            .get_or_create(&cfg.driver, &cfg.connection_string)
             .await
             .map_err(|e| ExtractionError::Connection(e.to_string()))?;
 
@@ -307,14 +310,23 @@ fn extract_table_name(query: &str) -> Option<String> {
 }
 
 /// Substitute `$start`, `$end`, `$key_value`, `$column` placeholders in a query
-/// using partition params.
+/// using partition params. Values are SQL-escaped to prevent injection.
 fn substitute_query(query: &str, params: &std::collections::HashMap<String, String>) -> String {
     let mut result = query.to_string();
     for (key, value) in params {
         let placeholder = format!("${key}");
-        result = result.replace(&placeholder, value);
+        let escaped = escape_sql_param(value);
+        result = result.replace(&placeholder, &escaped);
     }
     result
+}
+
+/// Escape a SQL parameter value by doubling single quotes.
+/// This escapes the value content but does NOT add surrounding quotes —
+/// the query template is expected to include quotes where needed
+/// (e.g., `WHERE date >= '$start'`).
+fn escape_sql_param(value: &str) -> String {
+    value.replace('\'', "''")
 }
 
 #[cfg(test)]
@@ -358,6 +370,21 @@ mod tests {
         assert_eq!(
             result,
             "SELECT * FROM orders WHERE created_at >= '2024-01-01' AND created_at < '2024-02-01'"
+        );
+    }
+
+    #[test]
+    fn test_substitute_query_escapes_values() {
+        let mut params = std::collections::HashMap::new();
+        params.insert("key_value".to_string(), "O'Brien".to_string());
+
+        let result = substitute_query(
+            "SELECT * FROM users WHERE name = '$key_value'",
+            &params,
+        );
+        assert_eq!(
+            result,
+            "SELECT * FROM users WHERE name = 'O''Brien'"
         );
     }
 

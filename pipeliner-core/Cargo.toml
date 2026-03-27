@@ -23,7 +23,7 @@ tracing = "0.1"
 winnow = "0.7"
 opentelemetry = "0.28"
 opentelemetry_sdk = { version = "0.28", features = ["rt-tokio"] }
-opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic"] }
+opentelemetry-otlp = { version = "0.28", features = ["grpc-tonic", "metrics"] }
 
 [dev-dependencies]
 async-trait = "0.1"

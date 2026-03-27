@@ -1,7 +1,11 @@
-//! SQL driver abstraction trait and factory function.
+//! SQL driver abstraction trait, factory function, and connection pool.
+
+use std::collections::HashMap;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use pipeliner_core::record::Value;
+use tokio::sync::Mutex;
 
 use crate::config::SqlDriver;
 use crate::driver_mysql::MysqlDriver;
@@ -40,6 +44,15 @@ pub trait SqlDriverTrait: Send + Sync {
     ///
     /// Returns `SqlError` if the schema query fails.
     async fn query_schema(&self, table_or_query: &str) -> Result<Vec<(String, String)>, SqlError>;
+
+    /// Check whether the connection is still alive by running a lightweight query.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SqlError` if the connection is dead.
+    async fn ping(&self) -> Result<(), SqlError> {
+        self.execute_query("SELECT 1").await.map(|_| ())
+    }
 }
 
 /// Create a connected SQL driver for the given database type.
@@ -64,6 +77,93 @@ pub async fn create_driver(
             let d = MysqlDriver::connect(connection_string).await?;
             Ok(Box::new(d))
         }
+    }
+}
+
+/// Connection pool that caches SQL drivers by (driver type, connection string).
+///
+/// When a driver is requested for a connection that already exists in the pool,
+/// the existing driver is returned (after a health check). This avoids creating
+/// redundant TCP connections when the same database is used as both source and
+/// sink, or when `discover_schema` and `extract` are called separately.
+///
+/// Each pooled driver is wrapped in `Arc` so it can be shared across callers.
+pub struct DriverPool {
+    drivers: Mutex<HashMap<(SqlDriver, String), Arc<dyn SqlDriverTrait>>>,
+}
+
+impl DriverPool {
+    /// Create a new, empty connection pool.
+    pub fn new() -> Self {
+        Self {
+            drivers: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Get a cached driver or create a new one for the given connection.
+    ///
+    /// If a driver already exists for this (driver, connection_string) pair,
+    /// a health check (`ping`) is performed. If the ping fails, the stale
+    /// connection is discarded and a fresh one is created.
+    ///
+    /// # Errors
+    ///
+    /// Returns `SqlError::Connection` if a new connection cannot be established.
+    pub async fn get_or_create(
+        &self,
+        driver: &SqlDriver,
+        connection_string: &str,
+    ) -> Result<Arc<dyn SqlDriverTrait>, SqlError> {
+        let key = (driver.clone(), connection_string.to_string());
+
+        let mut map = self.drivers.lock().await;
+
+        // Check if we already have a driver for this connection.
+        if let Some(existing) = map.get(&key) {
+            // Verify the connection is still alive.
+            if existing.ping().await.is_ok() {
+                return Ok(Arc::clone(existing));
+            }
+            // Connection is dead — remove it and fall through to create a new one.
+            map.remove(&key);
+        }
+
+        // Create a fresh driver.
+        let new_driver: Arc<dyn SqlDriverTrait> = match driver {
+            SqlDriver::Postgres => {
+                Arc::new(PostgresDriver::connect(connection_string).await?)
+            }
+            SqlDriver::Sqlserver => {
+                Arc::new(SqlServerDriver::connect(connection_string).await?)
+            }
+            SqlDriver::Mysql => {
+                Arc::new(MysqlDriver::connect(connection_string).await?)
+            }
+        };
+
+        map.insert(key, Arc::clone(&new_driver));
+        Ok(new_driver)
+    }
+
+    /// Remove all cached connections from the pool.
+    pub async fn clear(&self) {
+        self.drivers.lock().await.clear();
+    }
+
+    /// Return the number of cached connections.
+    pub async fn len(&self) -> usize {
+        self.drivers.lock().await.len()
+    }
+
+    /// Return true if the pool has no cached connections.
+    pub async fn is_empty(&self) -> bool {
+        self.drivers.lock().await.is_empty()
+    }
+}
+
+impl Default for DriverPool {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

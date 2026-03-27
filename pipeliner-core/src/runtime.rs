@@ -124,6 +124,10 @@ pub struct PipelineDefinition {
     pub dead_letter_config: Option<SinkConfig>,
     /// Pipeline name for telemetry spans.
     pub pipeline_name: Option<String>,
+    /// Optional run ID for telemetry correlation.
+    pub run_id: Option<String>,
+    /// Optional partition key for telemetry correlation.
+    pub partition_key: Option<String>,
 }
 
 /// Metrics from the transform stage.
@@ -159,6 +163,8 @@ pub async fn execute_pipeline_with(
     cancel: CancellationToken,
     events: Option<RunEventSender>,
 ) -> Result<PipelineResult, PipelineError> {
+    let pipeline_start = std::time::Instant::now();
+
     let tracer = opentelemetry::global::tracer("pipeliner");
     let mut root_span = tracer.start("pipeline_run");
     if let Some(ref name) = pipeline.pipeline_name {
@@ -167,6 +173,33 @@ pub async fn execute_pipeline_with(
             name.clone(),
         ));
     }
+    if let Some(ref run_id) = pipeline.run_id {
+        root_span.set_attribute(opentelemetry::KeyValue::new("run_id", run_id.clone()));
+    }
+    if let Some(ref partition_key) = pipeline.partition_key {
+        root_span.set_attribute(opentelemetry::KeyValue::new(
+            "partition_key",
+            partition_key.clone(),
+        ));
+    }
+
+    // --- Metric instruments ---
+    let meter = opentelemetry::global::meter("pipeliner");
+    let records_read_counter = meter.u64_counter("pipeline.records_read").build();
+    let records_written_counter = meter.u64_counter("pipeline.records_written").build();
+    let records_dropped_counter = meter.u64_counter("pipeline.records_dropped").build();
+    let transform_errors_counter = meter.u64_counter("pipeline.transform_errors").build();
+    let pipeline_duration = meter.f64_histogram("pipeline.duration_seconds").build();
+
+    let metric_attrs: Vec<opentelemetry::KeyValue> = if let Some(ref name) = pipeline.pipeline_name
+    {
+        vec![opentelemetry::KeyValue::new(
+            "pipeline_name",
+            name.clone(),
+        )]
+    } else {
+        vec![]
+    };
 
     let num_sinks = pipeline.sinks.len();
 
@@ -299,6 +332,9 @@ pub async fn execute_pipeline_with(
             PipelineError::Source(e.to_string())
         })?;
 
+    // Record source metrics.
+    records_read_counter.add(source_result.records_read as u64, &metric_attrs);
+
     emit(RunEvent::StageTransition {
         stage: "source".to_string(),
         status: "completed".to_string(),
@@ -317,6 +353,9 @@ pub async fn execute_pipeline_with(
             PipelineError::Transform(e)
         })?;
 
+    // Record transform error metrics.
+    transform_errors_counter.add(transform_metrics.transform_errors as u64, &metric_attrs);
+
     emit(RunEvent::StageTransition {
         stage: "transform".to_string(),
         status: "completed".to_string(),
@@ -331,8 +370,15 @@ pub async fn execute_pipeline_with(
                 root_span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
                 PipelineError::Sink(e.to_string())
             })?;
+        // Record per-sink metrics.
+        records_written_counter.add(result.rows_written as u64, &metric_attrs);
+        records_dropped_counter.add(result.rows_errored as u64, &metric_attrs);
         sink_results.push(result);
     }
+
+    // Record pipeline duration.
+    let duration_secs = pipeline_start.elapsed().as_secs_f64();
+    pipeline_duration.record(duration_secs, &metric_attrs);
 
     root_span.set_attribute(opentelemetry::KeyValue::new(
         "records_read",

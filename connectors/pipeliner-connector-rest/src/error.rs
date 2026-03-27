@@ -32,6 +32,8 @@ pub enum RestError {
         status: u16,
         /// The response body.
         body: String,
+        /// The value of the Retry-After header, if present (in seconds).
+        retry_after: Option<u64>,
     },
 
     /// URL construction failed.

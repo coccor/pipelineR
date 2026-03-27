@@ -5,9 +5,11 @@ use std::sync::Arc;
 
 use arrow::datatypes::Schema as ArrowSchema;
 use async_trait::async_trait;
+use indexmap::IndexMap;
 use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression as ParquetCompression;
 use parquet::file::properties::WriterProperties;
+use pipeliner_core::record::{Record, Value};
 use pipeliner_proto::{SchemaRequirementResponse, SchemaResponse, SinkConfig, SinkDescriptor};
 use pipeliner_sdk::convert::proto_batch_to_core;
 use pipeliner_sdk::error::{LoadError, ValidationError};
@@ -99,46 +101,200 @@ impl Sink for ParquetSink {
             });
         }
 
-        // Convert to Arrow RecordBatch.
-        let arrow_batch = pipeliner_arrow_convert::records_to_arrow_batch(&all_records, None)
-            .map_err(|e| LoadError::Failed(e.to_string()))?;
+        if cfg.partition_columns.is_empty() {
+            // Single-file write (existing behaviour).
+            write_parquet_file(&cfg.path, &all_records, &cfg).await?;
+        } else {
+            // Hive-style partitioned write.
+            let groups = group_by_partitions(&all_records, &cfg.partition_columns);
+            for (partition_path, records) in &groups {
+                let dir = format!("{}/{}", cfg.path, partition_path);
+                std::fs::create_dir_all(&dir)
+                    .map_err(|e| LoadError::Failed(format!("mkdir failed: {e}")))?;
+                let file_path = format!("{dir}/part-0.parquet");
 
-        // Build writer properties with configured compression.
-        let compression = match cfg.compression {
-            Some(Compression::None) => ParquetCompression::UNCOMPRESSED,
-            Some(Compression::Snappy) | None => ParquetCompression::SNAPPY,
-            Some(Compression::Zstd) => ParquetCompression::ZSTD(Default::default()),
-            Some(Compression::Gzip) => ParquetCompression::GZIP(Default::default()),
-        };
+                // Strip partition columns from the written data.
+                let stripped: Vec<Record> = records
+                    .iter()
+                    .map(|r| {
+                        r.iter()
+                            .filter(|(k, _)| !cfg.partition_columns.contains(k))
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
+                    .collect();
 
-        let props = WriterProperties::builder()
-            .set_compression(compression)
-            .build();
-
-        // Write the Parquet file (blocking I/O wrapped in spawn_blocking).
-        let schema = Arc::new(ArrowSchema::clone(arrow_batch.schema().as_ref()));
-        let path = cfg.path.clone();
-
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            let file = File::create(&path).map_err(|e| format!("failed to create file: {e}"))?;
-            let mut writer = ArrowWriter::try_new(file, schema, Some(props))
-                .map_err(|e| format!("failed to create parquet writer: {e}"))?;
-            writer
-                .write(&arrow_batch)
-                .map_err(|e| format!("failed to write batch: {e}"))?;
-            writer
-                .close()
-                .map_err(|e| format!("failed to close writer: {e}"))?;
-            Ok(())
-        })
-        .await
-        .map_err(|e| LoadError::Failed(format!("task join error: {e}")))?
-        .map_err(LoadError::Failed)?;
+                write_parquet_file(&file_path, &stripped, &cfg).await?;
+            }
+        }
 
         Ok(LoadResult {
             rows_written: total_rows,
             rows_errored: 0,
             error_message: String::new(),
         })
+    }
+}
+
+/// Write a set of records to a single Parquet file at `path`.
+async fn write_parquet_file(
+    path: &str,
+    records: &[Record],
+    cfg: &ParquetSinkConfig,
+) -> Result<(), LoadError> {
+    let arrow_batch = pipeliner_arrow_convert::records_to_arrow_batch(records, None)
+        .map_err(|e| LoadError::Failed(e.to_string()))?;
+
+    let compression = match cfg.compression {
+        Some(Compression::None) => ParquetCompression::UNCOMPRESSED,
+        Some(Compression::Snappy) | None => ParquetCompression::SNAPPY,
+        Some(Compression::Zstd) => ParquetCompression::ZSTD(Default::default()),
+        Some(Compression::Gzip) => ParquetCompression::GZIP(Default::default()),
+    };
+
+    let props = WriterProperties::builder()
+        .set_compression(compression)
+        .build();
+
+    let schema = Arc::new(ArrowSchema::clone(arrow_batch.schema().as_ref()));
+    let path = path.to_string();
+
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let file = File::create(&path).map_err(|e| format!("failed to create file: {e}"))?;
+        let mut writer = ArrowWriter::try_new(file, schema, Some(props))
+            .map_err(|e| format!("failed to create parquet writer: {e}"))?;
+        writer
+            .write(&arrow_batch)
+            .map_err(|e| format!("failed to write batch: {e}"))?;
+        writer
+            .close()
+            .map_err(|e| format!("failed to close writer: {e}"))?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| LoadError::Failed(format!("task join error: {e}")))?
+    .map_err(LoadError::Failed)?;
+
+    Ok(())
+}
+
+/// Group records by partition column values, returning an ordered map from
+/// Hive-style partition path (e.g. `region=us/year=2024`) to the records
+/// belonging to that partition.
+pub fn group_by_partitions(
+    records: &[Record],
+    partition_columns: &[String],
+) -> IndexMap<String, Vec<Record>> {
+    let mut groups: IndexMap<String, Vec<Record>> = IndexMap::new();
+    for record in records {
+        let partition_path = partition_columns
+            .iter()
+            .map(|col| {
+                let val = match record.get(col) {
+                    Some(Value::String(s)) => s.clone(),
+                    Some(v) => v.to_string(),
+                    None => "__null__".to_string(),
+                };
+                format!("{col}={val}")
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        groups.entry(partition_path).or_default().push(record.clone());
+    }
+    groups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use pipeliner_core::record::Value;
+
+    fn make_record(pairs: Vec<(&str, Value)>) -> Record {
+        pairs
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v))
+            .collect()
+    }
+
+    #[test]
+    fn group_by_single_column() {
+        let records = vec![
+            make_record(vec![
+                ("region", Value::String("us".into())),
+                ("id", Value::Int(1)),
+            ]),
+            make_record(vec![
+                ("region", Value::String("eu".into())),
+                ("id", Value::Int(2)),
+            ]),
+            make_record(vec![
+                ("region", Value::String("us".into())),
+                ("id", Value::Int(3)),
+            ]),
+        ];
+
+        let groups = group_by_partitions(&records, &["region".to_string()]);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups["region=us"].len(), 2);
+        assert_eq!(groups["region=eu"].len(), 1);
+    }
+
+    #[test]
+    fn group_by_multiple_columns() {
+        let records = vec![
+            make_record(vec![
+                ("region", Value::String("us".into())),
+                ("year", Value::Int(2024)),
+                ("id", Value::Int(1)),
+            ]),
+            make_record(vec![
+                ("region", Value::String("us".into())),
+                ("year", Value::Int(2025)),
+                ("id", Value::Int(2)),
+            ]),
+            make_record(vec![
+                ("region", Value::String("us".into())),
+                ("year", Value::Int(2024)),
+                ("id", Value::Int(3)),
+            ]),
+        ];
+
+        let cols = vec!["region".to_string(), "year".to_string()];
+        let groups = group_by_partitions(&records, &cols);
+
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups["region=us/year=2024"].len(), 2);
+        assert_eq!(groups["region=us/year=2025"].len(), 1);
+    }
+
+    #[test]
+    fn group_by_missing_column_uses_null_placeholder() {
+        let records = vec![
+            make_record(vec![("id", Value::Int(1))]),
+            make_record(vec![
+                ("region", Value::String("eu".into())),
+                ("id", Value::Int(2)),
+            ]),
+        ];
+
+        let groups = group_by_partitions(&records, &["region".to_string()]);
+
+        assert_eq!(groups.len(), 2);
+        assert!(groups.contains_key("region=__null__"));
+        assert!(groups.contains_key("region=eu"));
+    }
+
+    #[test]
+    fn group_by_empty_columns_returns_single_group() {
+        let records = vec![
+            make_record(vec![("id", Value::Int(1))]),
+            make_record(vec![("id", Value::Int(2))]),
+        ];
+
+        let groups = group_by_partitions(&records, &[]);
+
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[""].len(), 2);
     }
 }

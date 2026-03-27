@@ -453,6 +453,8 @@ pub async fn build_pipeline(
         dead_letter_sink: dl_client,
         dead_letter_config: dl_config,
         pipeline_name: Some(config.pipeline.name.clone()),
+        run_id: None,
+        partition_key: None,
     };
 
     let spawned = SpawnedConnectors {

@@ -37,6 +37,9 @@ pub struct RestSourceConfig {
     /// Optional field name whose maximum value is returned as the watermark.
     #[serde(default)]
     pub watermark_field: Option<String>,
+    /// Retry configuration for transient HTTP errors (429, 500, 502, 503, 504).
+    #[serde(default)]
+    pub retry: Option<RetryConfig>,
 }
 
 impl RestSourceConfig {
@@ -144,4 +147,28 @@ pub struct ResponseMapping {
 pub struct RateLimitConfig {
     /// Maximum number of HTTP requests per second.
     pub requests_per_second: f64,
+}
+
+/// Retry configuration for transient failures.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RetryConfig {
+    /// Maximum number of retries. Default: 3.
+    #[serde(default = "default_max_retries")]
+    pub max_retries: u32,
+    /// Initial backoff delay in milliseconds. Default: 1000.
+    #[serde(default = "default_initial_backoff_ms")]
+    pub initial_backoff_ms: u64,
+    /// Maximum backoff delay in milliseconds. Default: 30000.
+    #[serde(default = "default_max_backoff_ms")]
+    pub max_backoff_ms: u64,
+}
+
+fn default_max_retries() -> u32 {
+    3
+}
+fn default_initial_backoff_ms() -> u64 {
+    1000
+}
+fn default_max_backoff_ms() -> u64 {
+    30000
 }

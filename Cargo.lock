@@ -4508,6 +4508,7 @@ dependencies = [
  "arrow",
  "async-trait",
  "chrono",
+ "datafusion",
  "deltalake",
  "indexmap 2.13.0",
  "pipeliner-arrow-convert",
@@ -4587,6 +4588,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+ "tracing",
  "url",
  "wiremock",
 ]

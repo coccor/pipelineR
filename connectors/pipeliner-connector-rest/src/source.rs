@@ -116,10 +116,16 @@ async fn fetch_page(
 
     if !resp.status().is_success() {
         let status = resp.status();
+        let retry_after = resp
+            .headers()
+            .get(reqwest::header::RETRY_AFTER)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|v| v.parse::<u64>().ok());
         let body = resp.text().await.unwrap_or_default();
         return Err(RestError::HttpStatus {
             status: status.as_u16(),
             body,
+            retry_after,
         });
     }
     let headers = resp.headers().clone();
@@ -129,6 +135,68 @@ async fn fetch_page(
         .map_err(|e| RestError::JsonParse(e.to_string()))?;
 
     Ok((body, headers))
+}
+
+/// Return `true` if the given HTTP status code is considered retryable.
+fn is_retryable(status: u16) -> bool {
+    matches!(status, 429 | 500 | 502 | 503 | 504)
+}
+
+/// Compute exponential backoff delay in milliseconds.
+///
+/// If the server sent a `Retry-After` header (in seconds) for a 429 response,
+/// that value takes precedence (capped at `max_ms`).
+fn compute_backoff(attempt: u32, initial_ms: u64, max_ms: u64, retry_after: Option<u64>) -> u64 {
+    if let Some(secs) = retry_after {
+        return (secs * 1000).min(max_ms);
+    }
+    let backoff = initial_ms.saturating_mul(1u64 << (attempt - 1));
+    backoff.min(max_ms)
+}
+
+/// Wrapper around [`fetch_page`] that retries on transient HTTP errors
+/// (429, 500, 502, 503, 504) with exponential backoff.
+async fn fetch_page_with_retry(
+    client: &Client,
+    url: &url::Url,
+    cfg: &RestSourceConfig,
+    oauth_token: Option<&str>,
+) -> Result<(JsonValue, reqwest::header::HeaderMap), RestError> {
+    let retry = cfg.retry.as_ref();
+    let max_retries = retry.map_or(3, |r| r.max_retries);
+    let initial_backoff = retry.map_or(1000, |r| r.initial_backoff_ms);
+    let max_backoff = retry.map_or(30_000, |r| r.max_backoff_ms);
+
+    let mut attempt = 0u32;
+    loop {
+        match fetch_page(client, url, cfg, oauth_token).await {
+            Ok(result) => return Ok(result),
+            Err(RestError::HttpStatus {
+                status,
+                ref body,
+                retry_after,
+            }) if is_retryable(status) => {
+                attempt += 1;
+                if attempt > max_retries {
+                    return Err(RestError::HttpStatus {
+                        status,
+                        body: body.clone(),
+                        retry_after,
+                    });
+                }
+                let delay = compute_backoff(attempt, initial_backoff, max_backoff, retry_after);
+                tracing::warn!(
+                    status,
+                    attempt,
+                    max_retries,
+                    delay_ms = delay,
+                    "retryable HTTP error, backing off before retry"
+                );
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+            }
+            Err(e) => return Err(e),
+        }
+    }
 }
 
 /// Wait for rate limiting if configured.
@@ -361,9 +429,9 @@ impl Source for RestSource {
                 apply_initial_pagination(&mut url, &cfg.pagination);
             }
 
-            // Fetch page.
+            // Fetch page (with retry on transient errors).
             let (body, headers) =
-                fetch_page(&client, &url, &cfg, oauth_token.as_deref())
+                fetch_page_with_retry(&client, &url, &cfg, oauth_token.as_deref())
                     .await
                     .map_err(|e| ExtractionError::Connection(e.to_string()))?;
 
@@ -443,5 +511,51 @@ async fn resolve_oauth_token(
             Ok(Some(token))
         }
         _ => Ok(None),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_retryable() {
+        assert!(is_retryable(429));
+        assert!(is_retryable(500));
+        assert!(is_retryable(502));
+        assert!(is_retryable(503));
+        assert!(is_retryable(504));
+        assert!(!is_retryable(200));
+        assert!(!is_retryable(301));
+        assert!(!is_retryable(400));
+        assert!(!is_retryable(401));
+        assert!(!is_retryable(403));
+        assert!(!is_retryable(404));
+    }
+
+    #[test]
+    fn test_compute_backoff_exponential() {
+        // attempt 1: 1000 * 2^0 = 1000
+        assert_eq!(compute_backoff(1, 1000, 30_000, None), 1000);
+        // attempt 2: 1000 * 2^1 = 2000
+        assert_eq!(compute_backoff(2, 1000, 30_000, None), 2000);
+        // attempt 3: 1000 * 2^2 = 4000
+        assert_eq!(compute_backoff(3, 1000, 30_000, None), 4000);
+        // attempt 4: 1000 * 2^3 = 8000
+        assert_eq!(compute_backoff(4, 1000, 30_000, None), 8000);
+    }
+
+    #[test]
+    fn test_compute_backoff_capped_at_max() {
+        // attempt 6: 1000 * 2^5 = 32000, capped at 30000
+        assert_eq!(compute_backoff(6, 1000, 30_000, None), 30_000);
+    }
+
+    #[test]
+    fn test_compute_backoff_retry_after_header() {
+        // Retry-After header takes precedence
+        assert_eq!(compute_backoff(1, 1000, 30_000, Some(5)), 5000);
+        // Retry-After capped at max_ms
+        assert_eq!(compute_backoff(1, 1000, 30_000, Some(60)), 30_000);
     }
 }

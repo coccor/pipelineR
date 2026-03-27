@@ -11,6 +11,10 @@ pub struct ParquetSinkConfig {
     pub compression: Option<Compression>,
     /// How to handle nested types (Array, Map). Defaults to `JsonString`.
     pub nested_handling: Option<NestedHandling>,
+    /// Columns to partition by (Hive-style: `column=value/` directory structure).
+    /// If empty, all data is written to a single file.
+    #[serde(default)]
+    pub partition_columns: Vec<String>,
 }
 
 /// Compression codec for Parquet output.

@@ -10,7 +10,7 @@ use pipeliner_sdk::Sink;
 use tokio::sync::mpsc;
 
 use crate::config::{SqlDriver, SqlSinkConfig, WriteMode};
-use crate::driver::create_driver;
+use crate::DRIVER_POOL;
 
 /// The SQL sink connector.
 pub struct SqlSink;
@@ -232,7 +232,8 @@ impl Sink for SqlSink {
     ) -> Result<LoadResult, LoadError> {
         let cfg = parse_sink_config(config).map_err(|e| LoadError::Failed(e.to_string()))?;
 
-        let driver = create_driver(&cfg.driver, &cfg.connection_string)
+        let driver = DRIVER_POOL
+            .get_or_create(&cfg.driver, &cfg.connection_string)
             .await
             .map_err(|e| LoadError::Connection(e.to_string()))?;
 

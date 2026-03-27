@@ -17,5 +17,5 @@ members = [
 version = "0.1.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/pipeliner/pipelineR"
+repository = "https://github.com/coccor/pipelineR"
 rust-version = "1.75"

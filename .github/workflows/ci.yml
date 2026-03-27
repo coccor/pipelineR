@@ -57,6 +57,8 @@ jobs:
       - uses: arduino/setup-protoc@v3
         with:
           version: "27.x"
+      - name: Build workspace (connector binaries needed by integration tests)
+        run: cargo build --workspace
       - run: cargo test --workspace
 
   docs:

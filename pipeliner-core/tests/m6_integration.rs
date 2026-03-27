@@ -131,24 +131,23 @@ async fn validate_pipeline_valid_config() {
     }
     let json_output = dir.path().join("output.jsonl");
 
-    let toml = test_pipeline_toml(
-        csv_input.to_str().unwrap(),
-        json_output.to_str().unwrap(),
-    );
+    let toml = test_pipeline_toml(csv_input.to_str().unwrap(), json_output.to_str().unwrap());
 
     let resp = client
         .validate_pipeline(ValidatePipelineRequest {
             config: Some(
-                pipeliner_proto::pipeliner::v1::validate_pipeline_request::Config::ConfigToml(
-                    toml,
-                ),
+                pipeliner_proto::pipeliner::v1::validate_pipeline_request::Config::ConfigToml(toml),
             ),
         })
         .await
         .unwrap()
         .into_inner();
 
-    assert!(resp.valid, "expected valid config, got errors: {:?}", resp.errors);
+    assert!(
+        resp.valid,
+        "expected valid config, got errors: {:?}",
+        resp.errors
+    );
 }
 
 #[tokio::test]
@@ -291,10 +290,7 @@ async fn run_pipeline_and_get_status() {
     }
     let json_output = dir.path().join("output.jsonl");
 
-    let toml = test_pipeline_toml(
-        csv_input.to_str().unwrap(),
-        json_output.to_str().unwrap(),
-    );
+    let toml = test_pipeline_toml(csv_input.to_str().unwrap(), json_output.to_str().unwrap());
 
     // Submit the run.
     let run_resp = client
@@ -360,18 +356,13 @@ async fn run_pipeline_and_watch_run() {
     }
     let json_output = dir.path().join("output.jsonl");
 
-    let toml = test_pipeline_toml(
-        csv_input.to_str().unwrap(),
-        json_output.to_str().unwrap(),
-    );
+    let toml = test_pipeline_toml(csv_input.to_str().unwrap(), json_output.to_str().unwrap());
 
     // Submit the run.
     let run_resp = client
         .run_pipeline(RunPipelineRequest {
             config: Some(
-                pipeliner_proto::pipeliner::v1::run_pipeline_request::Config::ConfigToml(
-                    toml,
-                ),
+                pipeliner_proto::pipeliner::v1::run_pipeline_request::Config::ConfigToml(toml),
             ),
             params: HashMap::new(),
         })
@@ -430,8 +421,7 @@ async fn run_pipeline_and_watch_run() {
 
     // The last event should be a completion with COMPLETED state.
     let last = events.last().unwrap();
-    if let Some(pipeliner_proto::pipeliner::v1::run_event::Event::Completed(status)) = &last.event
-    {
+    if let Some(pipeliner_proto::pipeliner::v1::run_event::Event::Completed(status)) = &last.event {
         assert_eq!(status.state, RunState::Completed as i32);
     } else {
         panic!("last event was not a completion: {last:?}");
@@ -454,10 +444,7 @@ async fn cancel_run() {
     }
     let json_output = dir.path().join("output.jsonl");
 
-    let toml = test_pipeline_toml(
-        csv_input.to_str().unwrap(),
-        json_output.to_str().unwrap(),
-    );
+    let toml = test_pipeline_toml(csv_input.to_str().unwrap(), json_output.to_str().unwrap());
 
     // Submit the run.
     let run_resp = client

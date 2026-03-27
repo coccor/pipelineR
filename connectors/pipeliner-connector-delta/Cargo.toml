@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-connector-delta"
-version = "0.1.0"
-edition = "2021"
+description = "Delta Lake sink connector for pipelineR — append, overwrite, and merge modes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "pipeliner-connector-delta"

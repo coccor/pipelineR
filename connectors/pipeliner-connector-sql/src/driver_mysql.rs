@@ -50,8 +50,11 @@ impl MysqlDriver {
             MysqlValue::Float(f) => Value::Float(*f as f64),
             MysqlValue::Double(f) => Value::Float(*f),
             MysqlValue::Date(year, month, day, hour, min, sec, _micro) => {
-                let nd = NaiveDate::from_ymd_opt(i32::from(*year), u32::from(*month), u32::from(*day));
-                let ndt = nd.and_then(|d| d.and_hms_opt(u32::from(*hour), u32::from(*min), u32::from(*sec)));
+                let nd =
+                    NaiveDate::from_ymd_opt(i32::from(*year), u32::from(*month), u32::from(*day));
+                let ndt = nd.and_then(|d| {
+                    d.and_hms_opt(u32::from(*hour), u32::from(*min), u32::from(*sec))
+                });
                 ndt.map_or(Value::Null, |dt| {
                     Value::Timestamp(DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc))
                 })
@@ -79,10 +82,7 @@ impl SqlDriverTrait for MysqlDriver {
             let mut sql_row = Vec::with_capacity(columns.len());
             for (idx, col) in columns.iter().enumerate() {
                 let name = col.name_str().to_string();
-                let raw_val: MysqlValue = row
-                    .as_ref(idx)
-                    .cloned()
-                    .unwrap_or(MysqlValue::NULL);
+                let raw_val: MysqlValue = row.as_ref(idx).cloned().unwrap_or(MysqlValue::NULL);
                 let value = Self::mysql_value_to_value(&raw_val);
                 sql_row.push((name, value));
             }

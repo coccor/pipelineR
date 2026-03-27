@@ -31,9 +31,7 @@ pub struct DeadLetterRecord {
 fn extract_top_level_field_name(expr: &Expr) -> Result<String, EvalError> {
     match expr {
         Expr::FieldPath(segments) => match segments.first() {
-            Some(PathSegment::Field(name) | PathSegment::QuotedField(name)) => {
-                Ok(name.clone())
-            }
+            Some(PathSegment::Field(name) | PathSegment::QuotedField(name)) => Ok(name.clone()),
             Some(PathSegment::Index(_)) => Err(EvalError::Custom(
                 "expected field name, got array index".to_string(),
             )),
@@ -50,10 +48,7 @@ fn extract_top_level_field_name(expr: &Expr) -> Result<String, EvalError> {
 ///
 /// Mutates the record vector in place. Returns a [`TransformError`] if a step
 /// encounters an unrecoverable error.
-pub fn execute_step(
-    step: &TransformStep,
-    records: &mut Vec<Record>,
-) -> Result<(), TransformError> {
+pub fn execute_step(step: &TransformStep, records: &mut Vec<Record>) -> Result<(), TransformError> {
     match step.function.as_str() {
         "set" => step_set(&step.args, records),
         "rename" => step_rename(&step.args, records),
@@ -74,17 +69,11 @@ fn step_set(args: &[Expr], records: &mut [Record]) -> Result<(), TransformError>
             message: format!("expected 2 arguments, got {}", args.len()),
         });
     }
-    let field_name =
-        extract_top_level_field_name(&args[0]).map_err(|source| TransformError::EvalFailed {
-            index: 0,
-            source,
-        })?;
+    let field_name = extract_top_level_field_name(&args[0])
+        .map_err(|source| TransformError::EvalFailed { index: 0, source })?;
     for (i, record) in records.iter_mut().enumerate() {
-        let value =
-            eval_expr(&args[1], record).map_err(|source| TransformError::EvalFailed {
-                index: i,
-                source,
-            })?;
+        let value = eval_expr(&args[1], record)
+            .map_err(|source| TransformError::EvalFailed { index: i, source })?;
         record.insert(field_name.clone(), value);
     }
     Ok(())
@@ -98,16 +87,10 @@ fn step_rename(args: &[Expr], records: &mut [Record]) -> Result<(), TransformErr
             message: format!("expected 2 arguments, got {}", args.len()),
         });
     }
-    let old_name =
-        extract_top_level_field_name(&args[0]).map_err(|source| TransformError::EvalFailed {
-            index: 0,
-            source,
-        })?;
-    let new_name =
-        extract_top_level_field_name(&args[1]).map_err(|source| TransformError::EvalFailed {
-            index: 0,
-            source,
-        })?;
+    let old_name = extract_top_level_field_name(&args[0])
+        .map_err(|source| TransformError::EvalFailed { index: 0, source })?;
+    let new_name = extract_top_level_field_name(&args[1])
+        .map_err(|source| TransformError::EvalFailed { index: 0, source })?;
     for record in records.iter_mut() {
         if let Some(value) = record.swap_remove(&old_name) {
             record.insert(new_name.clone(), value);
@@ -124,11 +107,8 @@ fn step_remove(args: &[Expr], records: &mut [Record]) -> Result<(), TransformErr
             message: format!("expected 1 argument, got {}", args.len()),
         });
     }
-    let field_name =
-        extract_top_level_field_name(&args[0]).map_err(|source| TransformError::EvalFailed {
-            index: 0,
-            source,
-        })?;
+    let field_name = extract_top_level_field_name(&args[0])
+        .map_err(|source| TransformError::EvalFailed { index: 0, source })?;
     for record in records.iter_mut() {
         record.swap_remove(&field_name);
     }
@@ -146,11 +126,8 @@ fn step_where(args: &[Expr], records: &mut Vec<Record>) -> Result<(), TransformE
     let predicate = &args[0];
     let mut kept = Vec::new();
     for (i, record) in records.iter().enumerate() {
-        let val =
-            eval_expr(predicate, record).map_err(|source| TransformError::EvalFailed {
-                index: i,
-                source,
-            })?;
+        let val = eval_expr(predicate, record)
+            .map_err(|source| TransformError::EvalFailed { index: i, source })?;
         if val == Value::Bool(true) {
             kept.push(record.clone());
         }
@@ -211,11 +188,8 @@ fn step_set_with_dl(
             message: format!("expected 2 arguments, got {}", args.len()),
         });
     }
-    let field_name =
-        extract_top_level_field_name(&args[0]).map_err(|source| TransformError::EvalFailed {
-            index: 0,
-            source,
-        })?;
+    let field_name = extract_top_level_field_name(&args[0])
+        .map_err(|source| TransformError::EvalFailed { index: 0, source })?;
 
     let mut dead_letters = Vec::new();
     let mut kept = Vec::new();

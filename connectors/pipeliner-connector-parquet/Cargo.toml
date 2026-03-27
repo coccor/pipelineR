@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-connector-parquet"
-version = "0.1.0"
-edition = "2021"
+description = "Parquet sink connector for pipelineR — columnar output with compression and partitioning"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "pipeliner-connector-parquet"

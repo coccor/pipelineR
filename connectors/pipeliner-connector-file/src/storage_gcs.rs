@@ -84,9 +84,7 @@ impl Storage for GcsStorage {
             .object()
             .download(&bucket, &object)
             .await
-            .map_err(|e| {
-                FileSourceError::CloudStorage(format!("GCS download '{path}': {e}"))
-            })?;
+            .map_err(|e| FileSourceError::CloudStorage(format!("GCS download '{path}': {e}")))?;
 
         Ok(data)
     }
@@ -110,9 +108,7 @@ impl Storage for GcsStorage {
             .object()
             .create(&bucket, data.to_vec(), &object, mime)
             .await
-            .map_err(|e| {
-                FileSourceError::CloudStorage(format!("GCS upload '{path}': {e}"))
-            })?;
+            .map_err(|e| FileSourceError::CloudStorage(format!("GCS upload '{path}': {e}")))?;
 
         Ok(())
     }

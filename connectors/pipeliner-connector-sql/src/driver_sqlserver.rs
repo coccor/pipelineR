@@ -23,8 +23,9 @@ impl SqlServerDriver {
     ///
     /// Returns `SqlError::Connection` if the connection fails.
     pub async fn connect(connection_string: &str) -> Result<Self, SqlError> {
-        let config = Config::from_ado_string(connection_string)
-            .map_err(|e| SqlError::Connection(format!("invalid SQL Server connection string: {e}")))?;
+        let config = Config::from_ado_string(connection_string).map_err(|e| {
+            SqlError::Connection(format!("invalid SQL Server connection string: {e}"))
+        })?;
 
         let tcp = TcpStream::connect(config.get_addr())
             .await

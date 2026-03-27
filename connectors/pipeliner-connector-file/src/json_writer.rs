@@ -121,7 +121,10 @@ mod tests {
         let records = vec![make_record(vec![
             ("name", Value::String("Alice".into())),
             ("address", Value::Map(inner)),
-            ("tags", Value::Array(vec![Value::String("a".into()), Value::String("b".into())])),
+            (
+                "tags",
+                Value::Array(vec![Value::String("a".into()), Value::String("b".into())]),
+            ),
         ])];
 
         let mut writer = JsonFileWriter::new(&path).unwrap();

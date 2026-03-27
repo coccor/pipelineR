@@ -7,8 +7,8 @@ use std::io::Write;
 use std::time::Duration;
 
 use pipeliner_core::config::{
-    build_pipeline, build_runtime_params, parse_pipeline_config,
-    validate_config, ConnectorRegistry, ConnectorEntry, toml_value_to_json,
+    build_pipeline, build_runtime_params, parse_pipeline_config, toml_value_to_json,
+    validate_config, ConnectorEntry, ConnectorRegistry,
 };
 use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::execute_pipeline;
@@ -180,8 +180,22 @@ config.format = "csv"
     // Verify both output files exist with content.
     assert!(json_output.exists());
     assert!(csv_output.exists());
-    assert_eq!(std::fs::read_to_string(&json_output).unwrap().trim().lines().count(), 2);
-    assert_eq!(std::fs::read_to_string(&csv_output).unwrap().trim().lines().count(), 3); // header + 2 rows
+    assert_eq!(
+        std::fs::read_to_string(&json_output)
+            .unwrap()
+            .trim()
+            .lines()
+            .count(),
+        2
+    );
+    assert_eq!(
+        std::fs::read_to_string(&csv_output)
+            .unwrap()
+            .trim()
+            .lines()
+            .count(),
+        3
+    ); // header + 2 rows
 }
 
 #[test]
@@ -209,7 +223,10 @@ connector = "file"
 
     // Should have errors for: source connector not found, sink connector not found, bad transform.
     let has_transform_error = errors.iter().any(|e| e.contains("invalid step"));
-    assert!(has_transform_error, "expected transform parse error, got: {errors:?}");
+    assert!(
+        has_transform_error,
+        "expected transform parse error, got: {errors:?}"
+    );
 }
 
 #[test]
@@ -277,7 +294,8 @@ async fn schema_discovery_from_config() {
     }
 
     let registry = test_registry();
-    let source_binary = pipeliner_core::config::resolve_connector_binary("file", &registry).unwrap();
+    let source_binary =
+        pipeliner_core::config::resolve_connector_binary("file", &registry).unwrap();
 
     let mut process = ConnectorProcess::spawn("file", source_binary.to_str().unwrap())
         .await

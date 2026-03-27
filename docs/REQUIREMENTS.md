@@ -156,8 +156,8 @@ A thin wrapper around `pipeliner-core` that provides:
 - `pipeliner validate <pipeline.toml>` — validate config without executing
 - `pipeliner schema <pipeline.toml>` — discover and print source schema
 - `pipeliner partitions <pipeline.toml>` — discover and print partitions
-- `pipeliner plugins list` — list available/installed plugins
-- `pipeliner plugins install <n>` — download and register a plugin from crate registry
+- `pipeliner connectors list` — list available/installed connectors
+- `pipeliner connectors install <n>` — download and register a connector from crate registry
 - `pipeliner serve` — start the gRPC server (sidecar mode)
 
 ### 5.5 gRPC Orchestration API
@@ -329,7 +329,7 @@ spec:
   initContainers:
     - name: install-plugins
       image: myregistry/pipeliner:latest
-      command: ["pipeliner", "plugins", "install", "pipeliner-plugin-custom-api"]
+      command: ["pipeliner", "plugins", "install", "pipeliner-connector-custom-api"]
       volumeMounts:
         - name: plugins
           mountPath: /etc/pipeliner/plugins
@@ -345,8 +345,8 @@ Key points:
 
 - **Pipeline configs as ConfigMaps.** Pipeline TOML files are mounted read-only.
 - **Secrets via environment variables.** Injected via K8s Secrets, resolved at runtime via `${VAR}` substitution.
-- **Plugin installation via init container.** Custom plugins are installed at pod startup by running `pipeliner plugins install` in an init container. The plugin binaries are written to a shared `emptyDir` volume. Built-in plugins are baked into the pipelineR image.
-- **Additional plugins can also be baked into a custom image.** For fully deterministic deployments, build a custom pipelineR image with `pipeliner plugins install` in the Dockerfile.
+- **Connector installation via init container.** Custom connectors are installed at pod startup by running `pipeliner connectors install` in an init container. The connector binaries are written to a shared `emptyDir` volume. Built-in connectors are baked into the pipelineR image.
+- **Additional connectors can also be baked into a custom image.** For fully deterministic deployments, build a custom pipelineR image with `pipeliner connectors install` in the Dockerfile.
 - **gRPC health probes.** Native K8s gRPC probes for liveness and readiness.
 - **Graceful shutdown.** On `SIGTERM`, pipelineR stops accepting new runs, waits for in-flight runs to complete (configurable timeout), then exits.
 
@@ -441,7 +441,7 @@ Plugins are **standalone binaries** that communicate with the engine over **gRPC
 - **Language flexibility (future).** v1 SDK is Rust-only, but the gRPC contract allows future SDKs in other languages.
 - **Process isolation.** A misbehaving plugin cannot crash the engine.
 - **Independent versioning.** Plugins are versioned and released independently of the engine.
-- **Distribution via crates.** Plugins are published as Rust crates and installed via `pipeliner plugins install <crate-name>`. Precompiled binaries are downloaded from crate release artifacts when available; compilation from source is the fallback.
+- **Distribution via crates.** Plugins are published as Rust crates and installed via `pipeliner connectors install <crate-name>`. Precompiled binaries are downloaded from crate release artifacts when available; compilation from source is the fallback.
 
 ### 7.2 Source Plugin Trait
 
@@ -513,9 +513,9 @@ Key design decisions:
 
 ### 7.4 Plugin Discovery & Registration
 
-- Plugins are standalone binaries, stored in a configurable plugin directory (default: `/etc/pipeliner/plugins/`).
-- A plugin registry file (`plugins.toml`) maps plugin names to binary paths and versions.
-- `pipeliner plugins install <crate-name>` downloads precompiled binaries from release artifacts when available, falls back to compiling from source.
+- Plugins are standalone binaries, stored in a configurable connector directory (default: `/etc/pipeliner/connectors/`).
+- A connector registry file (`connectors.toml`) maps connector names to binary paths and versions.
+- `pipeliner connectors install <crate-name>` downloads precompiled binaries from release artifacts when available, falls back to compiling from source.
 - Plugins can also be registered locally by path, for development and custom connectors.
 - In K8s, plugins are installed via an init container or baked into a custom pipelineR Docker image.
 

@@ -135,11 +135,7 @@ pub fn next_page(ctx: &PageContext<'_>) -> NextPage {
 ///
 /// Returns the modified URL string, or `None` if the page state is a `LinkUrl`
 /// (in which case the caller should use the URL directly).
-pub fn apply_page_state(
-    url: &mut url::Url,
-    config: &PaginationConfig,
-    state: &PageState,
-) {
+pub fn apply_page_state(url: &mut url::Url, config: &PaginationConfig, state: &PageState) {
     match (config, state) {
         (PaginationConfig::Cursor { cursor_param, .. }, PageState::Cursor(val)) => {
             url.query_pairs_mut().append_pair(cursor_param, val);
@@ -167,8 +163,7 @@ pub fn apply_page_state(
             url.query_pairs_mut()
                 .append_pair(page_param, &page.to_string());
             if let (Some(param), Some(size)) = (page_size_param, page_size) {
-                url.query_pairs_mut()
-                    .append_pair(param, &size.to_string());
+                url.query_pairs_mut().append_pair(param, &size.to_string());
             }
         }
         _ => {}

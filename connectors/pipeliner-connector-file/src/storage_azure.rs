@@ -120,9 +120,10 @@ impl Storage for AzureStorage {
             .container_client(&container)
             .blob_client(&blob_name);
 
-        let data = blob_client.get_content().await.map_err(|e| {
-            FileSourceError::CloudStorage(format!("Azure get blob '{path}': {e}"))
-        })?;
+        let data = blob_client
+            .get_content()
+            .await
+            .map_err(|e| FileSourceError::CloudStorage(format!("Azure get blob '{path}': {e}")))?;
 
         Ok(data)
     }
@@ -141,9 +142,7 @@ impl Storage for AzureStorage {
         blob_client
             .put_block_blob(data.to_vec())
             .await
-            .map_err(|e| {
-                FileSourceError::CloudStorage(format!("Azure put blob '{path}': {e}"))
-            })?;
+            .map_err(|e| FileSourceError::CloudStorage(format!("Azure put blob '{path}': {e}")))?;
 
         Ok(())
     }

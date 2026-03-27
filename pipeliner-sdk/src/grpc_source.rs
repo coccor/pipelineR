@@ -100,15 +100,13 @@ impl<S: Source> SourceConnector for GrpcSourceService<S> {
         let params = inner.params.unwrap_or_default();
 
         let (batch_tx, mut batch_rx) = mpsc::channel::<pipeliner_proto::RecordBatch>(32);
-        let (stream_tx, stream_rx) =
-            mpsc::channel::<Result<ExtractResponse, Status>>(32);
+        let (stream_tx, stream_rx) = mpsc::channel::<Result<ExtractResponse, Status>>(32);
 
         let source = Arc::clone(&self.source);
 
         // Spawn extraction — sends batches to batch_tx.
-        let extract_handle = tokio::spawn(async move {
-            source.extract(&config, &params, batch_tx).await
-        });
+        let extract_handle =
+            tokio::spawn(async move { source.extract(&config, &params, batch_tx).await });
 
         // Spawn forwarding loop: batch_rx → stream_tx, then send watermark.
         tokio::spawn(async move {
@@ -133,9 +131,7 @@ impl<S: Source> SourceConnector for GrpcSourceService<S> {
                         .await;
                 }
                 Ok(Err(e)) => {
-                    let _ = stream_tx
-                        .send(Err(Status::internal(e.to_string())))
-                        .await;
+                    let _ = stream_tx.send(Err(Status::internal(e.to_string()))).await;
                 }
                 Err(join_err) => {
                     let _ = stream_tx

@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-sdk"
-version = "0.1.0"
-edition = "2021"
+description = "Plugin SDK for pipelineR — Source and Sink traits with gRPC scaffolding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 pipeliner-core = { path = "../pipeliner-core" }

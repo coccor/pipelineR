@@ -62,12 +62,10 @@ fn eval_field_path(segments: &[PathSegment], record: &Record) -> Value {
 
     // Get the first value from the record.
     let first = match &segments[0] {
-        PathSegment::Field(name) | PathSegment::QuotedField(name) => {
-            match record.get(name) {
-                Some(v) => v.clone(),
-                None => return Value::Null,
-            }
-        }
+        PathSegment::Field(name) | PathSegment::QuotedField(name) => match record.get(name) {
+            Some(v) => v.clone(),
+            None => return Value::Null,
+        },
         PathSegment::Index(_) => return Value::Null,
     };
 
@@ -172,7 +170,10 @@ fn eval_int_op(a: i64, op: Op, b: i64) -> Result<Value, EvalError> {
         Op::Gte => Ok(Value::Bool(a >= b)),
         Op::Lt => Ok(Value::Bool(a < b)),
         Op::Lte => Ok(Value::Bool(a <= b)),
-        _ => Err(EvalError::Custom(format!("unexpected op {:?} for ints", op))),
+        _ => Err(EvalError::Custom(format!(
+            "unexpected op {:?} for ints",
+            op
+        ))),
     }
 }
 

@@ -1,3 +1,15 @@
 /target
-.claude/settings.local.json
+.claude/
+CLAUDE.md
 docs/superpowers/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

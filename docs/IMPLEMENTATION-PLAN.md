@@ -70,7 +70,7 @@ M8  Observability (OpenTelemetry) + dead-letter + polish
 
 **Deliverables:**
 
-- `pipeliner-plugin-file` crate implementing the `Source` trait
+- `pipeliner-connector-file` crate implementing the `Source` trait
 - CSV reader — reads a CSV file, emits `RecordBatch`es with string values (type coercion handled by DSL transforms)
 - JSON reader — reads newline-delimited JSON, emits records preserving nested structure
 - Parquet reader — reads Parquet files, maps Parquet types to `Value` variants
@@ -90,7 +90,7 @@ M8  Observability (OpenTelemetry) + dead-letter + polish
 
 **Deliverables:**
 
-- `pipeliner-plugin-file` extended with the `Sink` trait (same crate, both source and sink)
+- `pipeliner-connector-file` extended with the `Sink` trait (same crate, both source and sink)
 - CSV writer — receives `RecordBatch`es, writes CSV
 - JSON writer — writes newline-delimited JSON preserving nested structure
 - Local filesystem only
@@ -112,13 +112,13 @@ M8  Observability (OpenTelemetry) + dead-letter + polish
 - TOML config parser — parse `pipeline.toml` into the internal pipeline definition (source config, transform steps, sink configs, dead-letter config)
 - Environment variable substitution (`${VAR_NAME}`) in config values
 - Runtime parameter overrides via CLI flags (`--param key=value`)
-- Plugin discovery — read `plugins.toml` registry, resolve plugin names to binary paths
+- Plugin discovery — read `connectors.toml` registry, resolve connector names to binary paths
 - CLI commands:
   - `pipeliner run <pipeline.toml>` — execute a pipeline end-to-end
   - `pipeliner validate <pipeline.toml>` — parse config + call plugin `validate` methods
   - `pipeliner schema <pipeline.toml>` — call source plugin's `discover_schema`, print results
   - `pipeliner partitions <pipeline.toml>` — call source plugin's `discover_partitions`, print results
-  - `pipeliner plugins list` — list registered plugins
+  - `pipeliner connectors list` — list registered plugins
 - Structured JSON logging to stdout/stderr with log level filtering
 - Exit code conventions: 0 = success, 1 = pipeline failure, 2 = config error
 
@@ -153,13 +153,13 @@ M8  Observability (OpenTelemetry) + dead-letter + polish
 
 ## Milestone 7 — Production plugins
 
-**Goal:** The built-in plugins from the PRD are implemented. pipelineR can talk to real data systems.
+**Goal:** The built-in connectors from the PRD are implemented. pipelineR can talk to real data systems.
 
 This milestone has four parallel tracks. Each can be developed and tested independently.
 
 ### M7a — SQL source and sink
 
-- `pipeliner-plugin-sql` crate
+- `pipeliner-connector-sql` crate
 - Driver abstraction over SQL Server (TDS via `tiberius`), PostgreSQL (`tokio-postgres`), MySQL (`mysql_async`)
 - Source: parameterized `SELECT` queries, streaming result sets as `RecordBatch`es
 - Source `discover_schema`: queries `INFORMATION_SCHEMA.COLUMNS`
@@ -172,7 +172,7 @@ This milestone has four parallel tracks. Each can be developed and tested indepe
 
 ### M7b — REST API source
 
-- `pipeliner-plugin-rest-api` crate
+- `pipeliner-connector-rest` crate
 - Configurable authentication: API key (header or query param), OAuth2 client credentials (machine-to-machine token fetch), Bearer token
 - Configurable pagination: cursor-based, offset-based, page-number, link-header (RFC 8288)
 - Response mapping: JSONPath-like config to extract the record array and pagination fields from the response body
@@ -184,7 +184,7 @@ This milestone has four parallel tracks. Each can be developed and tested indepe
 
 ### M7c — Cloud storage for file plugin
 
-- Extend `pipeliner-plugin-file` with cloud storage backends
+- Extend `pipeliner-connector-file` with cloud storage backends
 - Azure Blob Storage / ADLS Gen2 (via `azure_storage_blobs` crate)
 - AWS S3 (via `aws-sdk-s3` crate)
 - GCP GCS (via `cloud-storage` crate)
@@ -194,13 +194,13 @@ This milestone has four parallel tracks. Each can be developed and tested indepe
 
 ### M7d — Delta Lake and Parquet sinks
 
-- `pipeliner-plugin-delta` crate — sink only
+- `pipeliner-connector-delta` crate — sink only
 - Built on `deltalake` (delta-rs) crate
 - Append, overwrite, and merge (upsert) write modes
 - Partition-by columns support
 - Row-to-Arrow conversion: convert `Vec<Record>` to Arrow `RecordBatch` using inferred or declared schema. This is the critical piece — map each `Value` variant to the appropriate Arrow type, handle nested structures by flattening or storing as JSON strings (configurable)
 - Cloud storage support (same backends as file plugin)
-- `pipeliner-plugin-parquet` crate — sink only
+- `pipeliner-connector-parquet` crate — sink only
 - Same row-to-Arrow conversion as Delta Lake plugin (shared utility crate: `pipeliner-arrow-convert`)
 - Writes Parquet files with configurable compression (snappy, zstd, gzip)
 - Cloud storage support
@@ -235,20 +235,20 @@ This milestone has four parallel tracks. Each can be developed and tested indepe
 - Dead-letter sink uses the same `Sink` plugin trait — any sink plugin can be a dead-letter destination (Kafka, file, SQL, etc.)
 - If no dead-letter sink is configured, transform errors are logged and the record is dropped
 
-### Plugin installation
+### Connector installation
 
-- `pipeliner plugins install <crate-name>` command
-- Download precompiled binary from crate release artifacts (GitHub releases convention: `pipeliner-plugin-<name>-<target>-<version>.tar.gz`)
+- `pipeliner connectors install <crate-name>` command
+- Download precompiled binary from crate release artifacts (GitHub releases convention: `pipeliner-connector-<name>-<target>-<version>.tar.gz`)
 - Fallback: `cargo install` from source if no precompiled binary is found
-- Binary placed in plugin directory, `plugins.toml` updated
-- `pipeliner plugins remove <name>` — unregister and delete binary
+- Binary placed in connector directory, `connectors.toml` updated
+- `pipeliner connectors remove <name>` — unregister and delete binary
 
 ### Hardening
 
 - Graceful shutdown on `SIGTERM` — stop accepting new runs, drain in-flight runs with configurable timeout
 - gRPC server binds to `127.0.0.1` by default (localhost-only)
 - Input validation on all gRPC request fields
-- Config validation: catch common mistakes early (missing required fields, invalid plugin names, unreachable endpoints)
+- Config validation: catch common mistakes early (missing required fields, invalid connector names, unreachable endpoints)
 - Error messages: every error surfaced to the orchestrator includes enough context to diagnose without reading pipelineR logs (plugin name, config field, underlying error)
 - Integration test suite that runs a full pipeline through the gRPC API (simulating the orchestrator flow from the PRD sequence diagram)
 - README, architecture doc, plugin authoring guide

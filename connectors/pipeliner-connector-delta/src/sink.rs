@@ -168,11 +168,7 @@ async fn merge_into_table(
 
     // Build a DataFrame from the Arrow batch so deltalake can use it as the merge source.
     let schema = batch.schema();
-    let column_names: Vec<String> = schema
-        .fields()
-        .iter()
-        .map(|f| f.name().clone())
-        .collect();
+    let column_names: Vec<String> = schema.fields().iter().map(|f| f.name().clone()).collect();
 
     let ctx = SessionContext::new();
     let source_df = ctx

@@ -102,7 +102,10 @@ mod tests {
     fn json_to_record_object() {
         let json: JsonValue = serde_json::json!({"name": "Alice", "age": 30, "active": true});
         let record = json_to_record(&json);
-        assert_eq!(record.get("name"), Some(&Value::String("Alice".to_string())));
+        assert_eq!(
+            record.get("name"),
+            Some(&Value::String("Alice".to_string()))
+        );
         assert_eq!(record.get("age"), Some(&Value::Int(30)));
         assert_eq!(record.get("active"), Some(&Value::Bool(true)));
     }

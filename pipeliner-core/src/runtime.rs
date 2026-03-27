@@ -168,10 +168,7 @@ pub async fn execute_pipeline_with(
     let tracer = opentelemetry::global::tracer("pipeliner");
     let mut root_span = tracer.start("pipeline_run");
     if let Some(ref name) = pipeline.pipeline_name {
-        root_span.set_attribute(opentelemetry::KeyValue::new(
-            "pipeline_name",
-            name.clone(),
-        ));
+        root_span.set_attribute(opentelemetry::KeyValue::new("pipeline_name", name.clone()));
     }
     if let Some(ref run_id) = pipeline.run_id {
         root_span.set_attribute(opentelemetry::KeyValue::new("run_id", run_id.clone()));
@@ -193,10 +190,7 @@ pub async fn execute_pipeline_with(
 
     let metric_attrs: Vec<opentelemetry::KeyValue> = if let Some(ref name) = pipeline.pipeline_name
     {
-        vec![opentelemetry::KeyValue::new(
-            "pipeline_name",
-            name.clone(),
-        )]
+        vec![opentelemetry::KeyValue::new("pipeline_name", name.clone())]
     } else {
         vec![]
     };
@@ -237,7 +231,9 @@ pub async fn execute_pipeline_with(
                 ));
             }
             Err(e) => {
-                span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+                span.set_status(Status::Error {
+                    description: std::borrow::Cow::Owned(e.to_string()),
+                });
             }
         }
         span.end();
@@ -295,7 +291,9 @@ pub async fn execute_pipeline_with(
         )
         .await;
         if let Err(ref e) = result {
-            span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+            span.set_status(Status::Error {
+                description: std::borrow::Cow::Owned(e.to_string()),
+            });
         }
         span.end();
         result
@@ -316,7 +314,9 @@ pub async fn execute_pipeline_with(
             span.set_attribute(opentelemetry::KeyValue::new("sink_index", i as i64));
             let result = run_sink(i, &mut client, config, rx, sink_events).await;
             if let Err(ref e) = result {
-                span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+                span.set_status(Status::Error {
+                    description: std::borrow::Cow::Owned(e.to_string()),
+                });
             }
             span.end();
             result
@@ -328,7 +328,9 @@ pub async fn execute_pipeline_with(
         .await
         .map_err(|e| PipelineError::Source(format!("source task panicked: {e}")))?
         .map_err(|e| {
-            root_span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+            root_span.set_status(Status::Error {
+                description: std::borrow::Cow::Owned(e.to_string()),
+            });
             PipelineError::Source(e.to_string())
         })?;
 
@@ -349,7 +351,9 @@ pub async fn execute_pipeline_with(
             })
         })?
         .map_err(|e| {
-            root_span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+            root_span.set_status(Status::Error {
+                description: std::borrow::Cow::Owned(e.to_string()),
+            });
             PipelineError::Transform(e)
         })?;
 
@@ -367,7 +371,9 @@ pub async fn execute_pipeline_with(
             .await
             .map_err(|e| PipelineError::Sink(format!("sink task panicked: {e}")))?
             .map_err(|e| {
-                root_span.set_status(Status::Error { description: std::borrow::Cow::Owned(e.to_string()) });
+                root_span.set_status(Status::Error {
+                    description: std::borrow::Cow::Owned(e.to_string()),
+                });
                 PipelineError::Sink(e.to_string())
             })?;
         // Record per-sink metrics.

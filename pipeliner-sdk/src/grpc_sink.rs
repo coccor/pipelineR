@@ -32,10 +32,7 @@ impl<K: Sink> GrpcSinkService<K> {
 #[tonic::async_trait]
 impl<K: Sink> SinkConnector for GrpcSinkService<K> {
     /// Return metadata about this sink connector.
-    async fn describe(
-        &self,
-        _request: Request<Empty>,
-    ) -> Result<Response<SinkDescriptor>, Status> {
+    async fn describe(&self, _request: Request<Empty>) -> Result<Response<SinkDescriptor>, Status> {
         Ok(Response::new(self.sink.describe()))
     }
 
@@ -96,9 +93,7 @@ impl<K: Sink> SinkConnector for GrpcSinkService<K> {
         let (batch_tx, batch_rx) = mpsc::channel::<pipeliner_proto::RecordBatch>(32);
 
         let sink = Arc::clone(&self.sink);
-        let load_handle = tokio::spawn(async move {
-            sink.load(&config, schema, batch_rx).await
-        });
+        let load_handle = tokio::spawn(async move { sink.load(&config, schema, batch_rx).await });
 
         // Forward remaining stream messages to the channel.
         while let Some(msg) = stream.message().await? {

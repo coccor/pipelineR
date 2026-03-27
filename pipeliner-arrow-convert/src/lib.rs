@@ -70,7 +70,9 @@ pub fn records_to_arrow_batch(
     schema: Option<&ArrowSchema>,
 ) -> Result<ArrowRecordBatch, ArrowConvertError> {
     if records.is_empty() {
-        let s = schema.cloned().unwrap_or_else(|| ArrowSchema::new(Vec::<Field>::new()));
+        let s = schema
+            .cloned()
+            .unwrap_or_else(|| ArrowSchema::new(Vec::<Field>::new()));
         return Ok(ArrowRecordBatch::new_empty(Arc::new(s)));
     }
 
@@ -192,9 +194,7 @@ fn build_array(
                     _ => builder.append_null(),
                 }
             }
-            let array = builder
-                .finish()
-                .with_timezone("UTC");
+            let array = builder.finish().with_timezone("UTC");
             Ok(Arc::new(array))
         }
         other => Err(ArrowConvertError::Conversion(format!(
@@ -248,14 +248,12 @@ mod tests {
 
     #[test]
     fn test_infer_schema_basic() {
-        let records: Vec<Record> = vec![
-            [
-                ("name".to_string(), Value::String("Alice".to_string())),
-                ("age".to_string(), Value::Int(30)),
-            ]
-            .into_iter()
-            .collect(),
-        ];
+        let records: Vec<Record> = vec![[
+            ("name".to_string(), Value::String("Alice".to_string())),
+            ("age".to_string(), Value::Int(30)),
+        ]
+        .into_iter()
+        .collect()];
         let schema = infer_schema(&records);
         assert_eq!(schema.fields().len(), 2);
         assert_eq!(schema.field(0).name(), "name");
@@ -266,9 +264,7 @@ mod tests {
 
     #[test]
     fn test_infer_schema_null_defaults_to_utf8() {
-        let records: Vec<Record> = vec![
-            [("x".to_string(), Value::Null)].into_iter().collect(),
-        ];
+        let records: Vec<Record> = vec![[("x".to_string(), Value::Null)].into_iter().collect()];
         let schema = infer_schema(&records);
         assert_eq!(*schema.field(0).data_type(), DataType::Utf8);
     }
@@ -308,9 +304,9 @@ mod tests {
     #[test]
     fn test_records_to_arrow_batch_with_timestamp() {
         let now = Utc::now();
-        let records: Vec<Record> = vec![
-            [("ts".to_string(), Value::Timestamp(now))].into_iter().collect(),
-        ];
+        let records: Vec<Record> = vec![[("ts".to_string(), Value::Timestamp(now))]
+            .into_iter()
+            .collect()];
         let batch = records_to_arrow_batch(&records, None).unwrap();
         assert_eq!(batch.num_rows(), 1);
     }

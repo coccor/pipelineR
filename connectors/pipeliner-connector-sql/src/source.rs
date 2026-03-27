@@ -98,8 +98,7 @@ impl Source for SqlSource {
         config: &SourceConfig,
         _params: &RuntimeParams,
     ) -> Result<SchemaResponse, DiscoveryError> {
-        let cfg =
-            parse_source_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
+        let cfg = parse_source_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
 
         let driver = DRIVER_POOL
             .get_or_create(&cfg.driver, &cfg.connection_string)
@@ -151,8 +150,7 @@ impl Source for SqlSource {
         config: &SourceConfig,
         _params: &RuntimeParams,
     ) -> Result<Vec<Partition>, DiscoveryError> {
-        let cfg =
-            parse_source_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
+        let cfg = parse_source_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
 
         let partition_cfg = match cfg.partition {
             Some(ref p) => p,
@@ -193,7 +191,11 @@ impl Source for SqlSource {
                     params.insert("end".to_string(), next.format("%Y-%m-%d").to_string());
                     params.insert("column".to_string(), dr.column.clone());
 
-                    let key = format!("{}..{}", current.format("%Y-%m-%d"), next.format("%Y-%m-%d"));
+                    let key = format!(
+                        "{}..{}",
+                        current.format("%Y-%m-%d"),
+                        next.format("%Y-%m-%d")
+                    );
                     partitions.push(Partition { key, params });
 
                     current = next;
@@ -351,10 +353,7 @@ mod tests {
 
     #[test]
     fn test_extract_table_name_subquery() {
-        assert_eq!(
-            extract_table_name("SELECT * FROM (SELECT 1) AS t"),
-            None
-        );
+        assert_eq!(extract_table_name("SELECT * FROM (SELECT 1) AS t"), None);
     }
 
     #[test]
@@ -378,14 +377,8 @@ mod tests {
         let mut params = std::collections::HashMap::new();
         params.insert("key_value".to_string(), "O'Brien".to_string());
 
-        let result = substitute_query(
-            "SELECT * FROM users WHERE name = '$key_value'",
-            &params,
-        );
-        assert_eq!(
-            result,
-            "SELECT * FROM users WHERE name = 'O''Brien'"
-        );
+        let result = substitute_query("SELECT * FROM users WHERE name = '$key_value'", &params);
+        assert_eq!(result, "SELECT * FROM users WHERE name = 'O''Brien'");
     }
 
     #[test]

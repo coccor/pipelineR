@@ -10,13 +10,13 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::parser::parse_step;
-use crate::error::PipelineError;
-use crate::telemetry::TelemetryConfig;
 use crate::connector::{
     ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper,
 };
+use crate::dsl::parser::parse_step;
+use crate::error::PipelineError;
 use crate::runtime::PipelineDefinition;
+use crate::telemetry::TelemetryConfig;
 use pipeliner_proto::{RuntimeParams, SinkConfig, SourceConfig};
 
 // ---------------------------------------------------------------------------
@@ -178,12 +178,15 @@ pub fn parse_pipeline_config(toml_str: &str) -> Result<PipelineConfig, ConfigErr
     substitute_toml_value(&mut raw)?;
 
     // Then deserialize into the typed config.
-    let config: PipelineConfig =
-        raw.try_into().map_err(|e: toml::de::Error| ConfigError::ParseError(e.to_string()))?;
+    let config: PipelineConfig = raw
+        .try_into()
+        .map_err(|e: toml::de::Error| ConfigError::ParseError(e.to_string()))?;
 
     // Validate basic structure.
     if config.sinks.is_empty() {
-        return Err(ConfigError::Validation("at least one [[sinks]] entry is required".to_string()));
+        return Err(ConfigError::Validation(
+            "at least one [[sinks]] entry is required".to_string(),
+        ));
     }
 
     Ok(config)
@@ -207,7 +210,7 @@ pub fn load_connector_registry(path: &Path) -> Result<ConnectorRegistry, ConfigE
 
 /// Resolve a connector name to a binary path using the registry.
 ///
-/// Falls back to searching for `pipeliner-plugin-<name>` in the same directory
+/// Falls back to searching for `pipeliner-connector-<name>` in the same directory
 /// as the current executable if the registry doesn't have an entry.
 pub fn resolve_connector_binary(
     name: &str,
@@ -325,15 +328,14 @@ pub async fn build_pipeline(
     let source_binary = resolve_connector_binary(&config.source.connector, registry)
         .map_err(PipelineError::Config)?;
     let source_binary_path = source_binary.to_str().unwrap_or_default().to_string();
-    let source_process =
-        ConnectorProcess::spawn(&config.source.connector, &source_binary_path)
-            .await
-            .map_err(|e| {
-                PipelineError::Source(format!(
-                    "failed to spawn source connector '{}' (binary: '{}'): {}",
-                    config.source.connector, source_binary_path, e
-                ))
-            })?;
+    let source_process = ConnectorProcess::spawn(&config.source.connector, &source_binary_path)
+        .await
+        .map_err(|e| {
+            PipelineError::Source(format!(
+                "failed to spawn source connector '{}' (binary: '{}'): {}",
+                config.source.connector, source_binary_path, e
+            ))
+        })?;
 
     // Small delay for the gRPC server to be ready.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
@@ -401,9 +403,7 @@ pub async fn build_pipeline(
 
         sink_processes.push(process);
         sink_clients.push(client);
-        sink_configs.push(SinkConfig {
-            config_json,
-        });
+        sink_configs.push(SinkConfig { config_json });
     }
 
     // Optionally resolve and spawn dead-letter sink connector.
@@ -416,15 +416,14 @@ pub async fn build_pipeline(
             .map_err(PipelineError::Config)?;
         let dl_binary_path = dl_binary.to_str().unwrap_or_default().to_string();
         let label = format!("{}-dead-letter", dl_spec.connector);
-        let process =
-            ConnectorProcess::spawn(&label, &dl_binary_path)
-                .await
-                .map_err(|e| {
-                    PipelineError::Sink(format!(
-                        "failed to spawn dead-letter connector '{}' (binary: '{}'): {}",
-                        dl_spec.connector, dl_binary_path, e
-                    ))
-                })?;
+        let process = ConnectorProcess::spawn(&label, &dl_binary_path)
+            .await
+            .map_err(|e| {
+                PipelineError::Sink(format!(
+                    "failed to spawn dead-letter connector '{}' (binary: '{}'): {}",
+                    dl_spec.connector, dl_binary_path, e
+                ))
+            })?;
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let dl_addr = process.address().to_string();
@@ -475,10 +474,7 @@ pub async fn build_pipeline(
 /// Does not spawn connectors — only checks that the config is structurally valid
 /// and connectors can be resolved. Returns a list of error/warning strings (empty
 /// means the config is valid).
-pub fn validate_config(
-    config: &PipelineConfig,
-    registry: &ConnectorRegistry,
-) -> Vec<String> {
+pub fn validate_config(config: &PipelineConfig, registry: &ConnectorRegistry) -> Vec<String> {
     let mut errors = Vec::new();
 
     // Check pipeline name is not empty.
@@ -488,7 +484,10 @@ pub fn validate_config(
 
     // Check source connector exists.
     if let Err(e) = resolve_connector_binary(&config.source.connector, registry) {
-        errors.push(format!("source connector '{}': {e}", config.source.connector));
+        errors.push(format!(
+            "source connector '{}': {e}",
+            config.source.connector
+        ));
     }
 
     // Check transform steps parse.
@@ -511,7 +510,10 @@ pub fn validate_config(
     let mut seen_sink_connectors = std::collections::HashSet::new();
     for (i, sink_spec) in config.sinks.iter().enumerate() {
         if let Err(e) = resolve_connector_binary(&sink_spec.connector, registry) {
-            errors.push(format!("sinks[{}] connector '{}': {e}", i, sink_spec.connector));
+            errors.push(format!(
+                "sinks[{}] connector '{}': {e}",
+                i, sink_spec.connector
+            ));
         }
         if !seen_sink_connectors.insert(&sink_spec.connector) {
             errors.push(format!(
@@ -672,7 +674,10 @@ connector = "file"
     fn env_var_substitution_missing_var() {
         let result = substitute_env_vars("${PIPELINER_NONEXISTENT_VAR_12345}");
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("PIPELINER_NONEXISTENT_VAR_12345"));
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("PIPELINER_NONEXISTENT_VAR_12345"));
     }
 
     #[test]

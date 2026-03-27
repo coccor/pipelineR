@@ -179,8 +179,8 @@ impl Sink for FileSink {
                         .map_err(|e| LoadError::Failed(e.to_string()))?;
                 }
                 SinkFileFormat::Json => {
-                    let mut writer = JsonFileWriter::new(path)
-                        .map_err(|e| LoadError::Failed(e.to_string()))?;
+                    let mut writer =
+                        JsonFileWriter::new(path).map_err(|e| LoadError::Failed(e.to_string()))?;
 
                     while let Some(batch) = rx.recv().await {
                         let core_batch = proto_batch_to_core(&batch);

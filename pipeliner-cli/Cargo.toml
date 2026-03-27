@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-cli"
-version = "0.1.0"
-edition = "2021"
+description = "CLI for pipelineR — execute, validate, and inspect batch ETL pipelines"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

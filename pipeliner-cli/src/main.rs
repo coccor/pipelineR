@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand};
 use tracing::{error, info};
 
 use pipeliner_core::config::{
-    build_pipeline, build_runtime_params, load_pipeline_config, load_connector_registry,
+    build_pipeline, build_runtime_params, load_connector_registry, load_pipeline_config,
     resolve_connector_binary, validate_config, ConnectorEntry, ConnectorRegistry,
 };
 use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
@@ -99,9 +99,9 @@ enum ConnectorsCommands {
 
 /// Parse a `key=value` parameter string.
 fn parse_param(s: &str) -> Result<(String, String), String> {
-    let pos = s.find('=').ok_or_else(|| {
-        format!("invalid param '{s}': expected format key=value")
-    })?;
+    let pos = s
+        .find('=')
+        .ok_or_else(|| format!("invalid param '{s}': expected format key=value"))?;
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
@@ -115,9 +115,7 @@ fn init_logging(level: &str, json: bool) {
             .json()
             .init();
     } else {
-        tracing_subscriber::fmt()
-            .with_env_filter(env_filter)
-            .init();
+        tracing_subscriber::fmt().with_env_filter(env_filter).init();
     }
 }
 
@@ -130,9 +128,7 @@ async fn main() -> ExitCode {
         Commands::Run { pipeline, params } => {
             cmd_run(&pipeline, &params, &cli.connectors_file).await
         }
-        Commands::Validate { pipeline } => {
-            cmd_validate(&pipeline, &cli.connectors_file)
-        }
+        Commands::Validate { pipeline } => cmd_validate(&pipeline, &cli.connectors_file),
         Commands::Schema { pipeline, params } => {
             cmd_schema(&pipeline, &params, &cli.connectors_file).await
         }
@@ -328,7 +324,10 @@ async fn cmd_schema(
                     })
                 }).collect::<Vec<_>>(),
             });
-            println!("{}", serde_json::to_string_pretty(&json).expect("json serialization"));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json).expect("json serialization")
+            );
         }
         Err(e) => {
             error!("schema discovery failed: {e}");
@@ -413,7 +412,10 @@ async fn cmd_partitions(
                     })
                 }).collect::<Vec<_>>(),
             });
-            println!("{}", serde_json::to_string_pretty(&json).expect("json serialization"));
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&json).expect("json serialization")
+            );
         }
         Err(e) => {
             error!("partition discovery failed: {e}");
@@ -440,10 +442,18 @@ fn cmd_connectors_list(connectors_file: &Path) -> ExitCode {
         println!("No connectors registered.");
         println!("Create a connectors.toml file or use --plugins-file to specify one.");
     } else {
-        println!("{name:<20} {path:<40} DESCRIPTION", name = "NAME", path = "PATH");
+        println!(
+            "{name:<20} {path:<40} DESCRIPTION",
+            name = "NAME",
+            path = "PATH"
+        );
         println!("{}", "-".repeat(80));
         for (name, entry) in &registry.connectors {
-            println!("{name:<20} {path:<40} {desc}", path = entry.path, desc = entry.description);
+            println!(
+                "{name:<20} {path:<40} {desc}",
+                path = entry.path,
+                desc = entry.description
+            );
         }
     }
 
@@ -456,9 +466,7 @@ async fn cmd_connectors_install(
     version: Option<&str>,
     connectors_file: &Path,
 ) -> ExitCode {
-    let short_name = name
-        .strip_prefix("pipeliner-connector-")
-        .unwrap_or(name);
+    let short_name = name.strip_prefix("pipeliner-connector-").unwrap_or(name);
     let crate_name = if name.starts_with("pipeliner-connector-") {
         name.to_string()
     } else {
@@ -545,7 +553,11 @@ fn cmd_connectors_remove(name: &str, connectors_file: &Path) -> ExitCode {
 fn home_cargo_bin(crate_name: &str) -> Option<PathBuf> {
     let home = std::env::var("HOME").ok()?;
     let p = PathBuf::from(home).join(".cargo/bin").join(crate_name);
-    if p.exists() { Some(p) } else { None }
+    if p.exists() {
+        Some(p)
+    } else {
+        None
+    }
 }
 
 /// Add or update a connector entry in the registry file.
@@ -574,7 +586,8 @@ fn write_registry(path: &Path, registry: &ConnectorRegistry) -> Result<(), Strin
 
 /// Start the gRPC server in sidecar mode.
 async fn cmd_serve(port: u16, connectors_file: &Path) -> ExitCode {
-    let server = match pipeliner_core::server::PipelineRServer::from_registry_path(connectors_file) {
+    let server = match pipeliner_core::server::PipelineRServer::from_registry_path(connectors_file)
+    {
         Ok(s) => s,
         Err(e) => {
             error!("failed to load connector registry: {e}");

@@ -199,7 +199,10 @@ pub fn group_by_partitions(
             })
             .collect::<Vec<_>>()
             .join("/");
-        groups.entry(partition_path).or_default().push(record.clone());
+        groups
+            .entry(partition_path)
+            .or_default()
+            .push(record.clone());
     }
     groups
 }
@@ -210,10 +213,7 @@ mod tests {
     use pipeliner_core::record::Value;
 
     fn make_record(pairs: Vec<(&str, Value)>) -> Record {
-        pairs
-            .into_iter()
-            .map(|(k, v)| (k.to_string(), v))
-            .collect()
+        pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
     }
 
     #[test]

@@ -4,8 +4,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow::array::{
-    Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array,
-    Int8Array, LargeStringArray, RecordBatch as ArrowBatch, StringArray, UInt16Array, UInt32Array,
+    Array, BooleanArray, Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
+    LargeStringArray, RecordBatch as ArrowBatch, StringArray, UInt16Array, UInt32Array,
     UInt64Array, UInt8Array,
 };
 use arrow::datatypes::{DataType, TimeUnit};
@@ -91,77 +91,89 @@ fn arrow_col_to_value(
 
     match dt {
         DataType::Boolean => {
-            let arr = col.as_any().downcast_ref::<BooleanArray>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast BooleanArray".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast BooleanArray".into()))?;
             Ok(Value::Bool(arr.value(row)))
         }
         DataType::Int8 => {
-            let arr = col.as_any().downcast_ref::<Int8Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Int8Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Int8Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Int8Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::Int16 => {
-            let arr = col.as_any().downcast_ref::<Int16Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Int16Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Int16Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Int16Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::Int32 => {
-            let arr = col.as_any().downcast_ref::<Int32Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Int32Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Int32Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::Int64 => {
-            let arr = col.as_any().downcast_ref::<Int64Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Int64Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Int64Array".into()))?;
             Ok(Value::Int(arr.value(row)))
         }
         DataType::UInt8 => {
-            let arr = col.as_any().downcast_ref::<UInt8Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast UInt8Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<UInt8Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast UInt8Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::UInt16 => {
-            let arr = col.as_any().downcast_ref::<UInt16Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast UInt16Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<UInt16Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast UInt16Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::UInt32 => {
-            let arr = col.as_any().downcast_ref::<UInt32Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast UInt32Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast UInt32Array".into()))?;
             Ok(Value::Int(i64::from(arr.value(row))))
         }
         DataType::UInt64 => {
-            let arr = col.as_any().downcast_ref::<UInt64Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast UInt64Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<UInt64Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast UInt64Array".into()))?;
             #[allow(clippy::cast_possible_wrap)]
             let val = arr.value(row) as i64;
             Ok(Value::Int(val))
         }
         DataType::Float32 => {
-            let arr = col.as_any().downcast_ref::<Float32Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Float32Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Float32Array".into()))?;
             Ok(Value::Float(f64::from(arr.value(row))))
         }
         DataType::Float64 => {
-            let arr = col.as_any().downcast_ref::<Float64Array>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast Float64Array".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast Float64Array".into()))?;
             Ok(Value::Float(arr.value(row)))
         }
         DataType::Utf8 => {
-            let arr = col.as_any().downcast_ref::<StringArray>().ok_or_else(|| {
-                FileSourceError::Parse("failed to downcast StringArray".into())
-            })?;
+            let arr = col
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .ok_or_else(|| FileSourceError::Parse("failed to downcast StringArray".into()))?;
             Ok(Value::String(arr.value(row).to_string()))
         }
         DataType::LargeUtf8 => {

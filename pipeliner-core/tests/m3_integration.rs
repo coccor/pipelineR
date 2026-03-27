@@ -13,9 +13,9 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 
+use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::dsl::parser::parse_step;
 use pipeliner_core::dsl::step::execute_step;
-use pipeliner_core::connector::{ConnectorProcess, SourceConnectorClientWrapper};
 use pipeliner_core::record::{Record, Value};
 use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnectorServer;
 use pipeliner_proto::{
@@ -137,7 +137,11 @@ async fn csv_source_extract_transform_to_mock_sink() {
 
     // --- Validate ---
     let validation = source_client.validate(source_config.clone()).await.unwrap();
-    assert!(validation.valid, "validation errors: {:?}", validation.errors);
+    assert!(
+        validation.valid,
+        "validation errors: {:?}",
+        validation.errors
+    );
 
     // --- Discover Schema ---
     let schema = source_client
@@ -198,15 +202,9 @@ async fn csv_source_extract_transform_to_mock_sink() {
 
     // After filter: Alice (42.5) and Carol (100.0) remain.
     assert_eq!(records.len(), 2);
-    assert_eq!(
-        records[0].get("name"),
-        Some(&Value::String("Alice".into()))
-    );
+    assert_eq!(records[0].get("name"), Some(&Value::String("Alice".into())));
     assert_eq!(records[0].get("amount"), Some(&Value::Float(42.5)));
-    assert_eq!(
-        records[1].get("name"),
-        Some(&Value::String("Carol".into()))
-    );
+    assert_eq!(records[1].get("name"), Some(&Value::String("Carol".into())));
     assert_eq!(records[1].get("amount"), Some(&Value::Float(100.0)));
 
     // --- Start mock sink and send results ---
@@ -228,16 +226,16 @@ async fn csv_source_extract_transform_to_mock_sink() {
 
     tokio::time::sleep(Duration::from_millis(100)).await;
 
-    let mut sink_client =
-        pipeliner_core::connector::SinkConnectorClientWrapper::connect(format!("http://{sink_addr}"))
-            .await
-            .unwrap();
+    let mut sink_client = pipeliner_core::connector::SinkConnectorClientWrapper::connect(format!(
+        "http://{sink_addr}"
+    ))
+    .await
+    .unwrap();
 
     use pipeliner_proto::pipeliner::v1::load_request::Payload;
     use pipeliner_proto::pipeliner::v1::{LoadMetadata, LoadRequest};
 
-    let transformed_batch =
-        core_batch_to_proto(&pipeliner_core::record::RecordBatch::new(records));
+    let transformed_batch = core_batch_to_proto(&pipeliner_core::record::RecordBatch::new(records));
 
     let metadata_msg = LoadRequest {
         payload: Some(Payload::Metadata(LoadMetadata {
@@ -257,14 +255,8 @@ async fn csv_source_extract_transform_to_mock_sink() {
     // Verify sink received correct data.
     let stored = sink_store.lock().await;
     assert_eq!(stored.len(), 2);
-    assert_eq!(
-        stored[0].get("name"),
-        Some(&Value::String("Alice".into()))
-    );
-    assert_eq!(
-        stored[1].get("name"),
-        Some(&Value::String("Carol".into()))
-    );
+    assert_eq!(stored[0].get("name"), Some(&Value::String("Alice".into())));
+    assert_eq!(stored[1].get("name"), Some(&Value::String("Carol".into())));
 
     // Cleanup.
     plugin.kill().await.ok();
@@ -326,10 +318,7 @@ async fn json_source_schema_discovery_and_extract() {
     assert_eq!(records.len(), 2);
     // JSON reader preserves types.
     assert_eq!(records[0].get("id"), Some(&Value::Int(1)));
-    assert_eq!(
-        records[0].get("name"),
-        Some(&Value::String("Alice".into()))
-    );
+    assert_eq!(records[0].get("name"), Some(&Value::String("Alice".into())));
     assert_eq!(records[0].get("score"), Some(&Value::Float(95.5)));
 
     plugin.kill().await.ok();

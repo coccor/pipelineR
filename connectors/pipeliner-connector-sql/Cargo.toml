@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-connector-sql"
-version = "0.1.0"
-edition = "2021"
+description = "SQL connector for pipelineR — PostgreSQL, MySQL, and SQL Server source and sink"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "pipeliner-connector-sql"

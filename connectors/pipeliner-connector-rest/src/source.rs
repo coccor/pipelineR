@@ -30,11 +30,7 @@ fn parse_rest_config(config: &SourceConfig) -> Result<RestSourceConfig, Validati
 
 /// Build the base URL from config fields.
 fn build_url(cfg: &RestSourceConfig) -> Result<url::Url, RestError> {
-    let full = format!(
-        "{}{}",
-        cfg.base_url.trim_end_matches('/'),
-        cfg.endpoint
-    );
+    let full = format!("{}{}", cfg.base_url.trim_end_matches('/'), cfg.endpoint);
     url::Url::parse(&full).map_err(|e| RestError::InvalidUrl(e.to_string()))
 }
 
@@ -66,11 +62,9 @@ fn apply_initial_pagination(url: &mut url::Url, pagination: &Option<PaginationCo
                 page_size_param,
                 page_size,
             } => {
-                url.query_pairs_mut()
-                    .append_pair(page_param, "1");
+                url.query_pairs_mut().append_pair(page_param, "1");
                 if let (Some(param), Some(size)) = (page_size_param, page_size) {
-                    url.query_pairs_mut()
-                        .append_pair(param, &size.to_string());
+                    url.query_pairs_mut().append_pair(param, &size.to_string());
                 }
             }
             _ => {}
@@ -200,10 +194,7 @@ async fn fetch_page_with_retry(
 }
 
 /// Wait for rate limiting if configured.
-async fn rate_limit_wait(
-    cfg: &RestSourceConfig,
-    last_request: &mut Option<Instant>,
-) {
+async fn rate_limit_wait(cfg: &RestSourceConfig, last_request: &mut Option<Instant>) {
     if let Some(ref rl) = cfg.rate_limit {
         if rl.requests_per_second > 0.0 {
             let interval = Duration::from_secs_f64(1.0 / rl.requests_per_second);
@@ -356,10 +347,7 @@ impl Source for RestSource {
                     let v = v.trim().to_string();
                     let mut p = HashMap::new();
                     p.insert(param_name.clone(), v.clone());
-                    Partition {
-                        key: v,
-                        params: p,
-                    }
+                    Partition { key: v, params: p }
                 })
                 .collect();
 
@@ -380,8 +368,7 @@ impl Source for RestSource {
         params: &RuntimeParams,
         tx: mpsc::Sender<pipeliner_proto::RecordBatch>,
     ) -> Result<String, ExtractionError> {
-        let cfg =
-            parse_rest_config(config).map_err(|e| ExtractionError::Failed(e.to_string()))?;
+        let cfg = parse_rest_config(config).map_err(|e| ExtractionError::Failed(e.to_string()))?;
         let client = Client::new();
 
         // Fetch OAuth2 token if needed.
@@ -436,9 +423,8 @@ impl Source for RestSource {
                     .map_err(|e| ExtractionError::Connection(e.to_string()))?;
 
             // Extract records.
-            let json_records =
-                extract_records(&body, &cfg.response_mapping.records_path)
-                    .map_err(|e| ExtractionError::Failed(e.to_string()))?;
+            let json_records = extract_records(&body, &cfg.response_mapping.records_path)
+                .map_err(|e| ExtractionError::Failed(e.to_string()))?;
 
             let records_count = json_records.len() as u64;
 
@@ -505,9 +491,14 @@ async fn resolve_oauth_token(
             client_secret,
             scope,
         }) => {
-            let token =
-                fetch_oauth2_token(client, token_url, client_id, client_secret, scope.as_deref())
-                    .await?;
+            let token = fetch_oauth2_token(
+                client,
+                token_url,
+                client_id,
+                client_secret,
+                scope.as_deref(),
+            )
+            .await?;
             Ok(Some(token))
         }
         _ => Ok(None),

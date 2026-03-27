@@ -143,9 +143,7 @@ fn parse_config_input(
 }
 
 /// Extract the config oneof from a RunPipelineRequest.
-fn extract_run_config(
-    req: &RunPipelineRequest,
-) -> (Option<String>, Option<String>) {
+fn extract_run_config(req: &RunPipelineRequest) -> (Option<String>, Option<String>) {
     use pipeliner_proto::pipeliner::v1::run_pipeline_request::Config;
     match &req.config {
         Some(Config::ConfigToml(s)) => (Some(s.clone()), None),
@@ -179,9 +177,7 @@ fn extract_discover_partitions_config(
 }
 
 /// Extract the config oneof from a validate pipeline request.
-fn extract_validate_config(
-    req: &ValidatePipelineRequest,
-) -> (Option<String>, Option<String>) {
+fn extract_validate_config(req: &ValidatePipelineRequest) -> (Option<String>, Option<String>) {
     use pipeliner_proto::pipeliner::v1::validate_pipeline_request::Config;
     match &req.config {
         Some(Config::ConfigToml(s)) => (Some(s.clone()), None),
@@ -208,12 +204,10 @@ fn to_proto_event(run_id: &str, evt: &RunEvent) -> pb::RunEvent {
             batch_number: *batch_number,
             records_in_batch: *records_in_batch,
         }),
-        RunEvent::Error { stage, message } => {
-            pb::run_event::Event::Error(pb::ErrorEvent {
-                stage: stage.clone(),
-                message: message.clone(),
-            })
-        }
+        RunEvent::Error { stage, message } => pb::run_event::Event::Error(pb::ErrorEvent {
+            stage: stage.clone(),
+            message: message.clone(),
+        }),
     };
     pb::RunEvent {
         run_id: run_id.to_string(),
@@ -247,10 +241,9 @@ impl PipelineR for PipelineRServer {
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let mut client =
-            crate::connector::SourceConnectorClientWrapper::connect(process.address())
-                .await
-                .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
+        let mut client = crate::connector::SourceConnectorClientWrapper::connect(process.address())
+            .await
+            .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
 
         let source_config = SourceConfig {
             config_json: crate::config::toml_value_to_json(&config.source.config),
@@ -288,10 +281,9 @@ impl PipelineR for PipelineRServer {
 
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
-        let mut client =
-            crate::connector::SourceConnectorClientWrapper::connect(process.address())
-                .await
-                .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
+        let mut client = crate::connector::SourceConnectorClientWrapper::connect(process.address())
+            .await
+            .map_err(|e| Status::internal(format!("failed to connect to source: {e}")))?;
 
         let source_config = SourceConfig {
             config_json: crate::config::toml_value_to_json(&config.source.config),
@@ -346,10 +338,7 @@ impl PipelineR for PipelineRServer {
         let run_id_clone = run_id.clone();
         tokio::spawn(async move {
             let result = async {
-                let partition_key = runtime_params
-                    .params
-                    .get("partition_key")
-                    .cloned();
+                let partition_key = runtime_params.params.get("partition_key").cloned();
                 let proto_params = RuntimeParams {
                     params: runtime_params.params,
                 };
@@ -375,10 +364,16 @@ impl PipelineR for PipelineRServer {
                 Ok((Ok(pipeline_result), mut spawned)) => {
                     spawned.kill_all().await;
 
-                    let total_written: i64 =
-                        pipeline_result.sink_results.iter().map(|s| s.rows_written).sum();
-                    let total_errored: i64 =
-                        pipeline_result.sink_results.iter().map(|s| s.rows_errored).sum();
+                    let total_written: i64 = pipeline_result
+                        .sink_results
+                        .iter()
+                        .map(|s| s.rows_written)
+                        .sum();
+                    let total_errored: i64 = pipeline_result
+                        .sink_results
+                        .iter()
+                        .map(|s| s.rows_errored)
+                        .sum();
 
                     state.status.state = pb::RunState::Completed as i32;
                     state.status.watermark = pipeline_result.watermark;
@@ -441,9 +436,7 @@ impl PipelineR for PipelineRServer {
             }
         });
 
-        Ok(Response::new(RunPipelineResponse {
-            run_id,
-        }))
+        Ok(Response::new(RunPipelineResponse { run_id }))
     }
 
     type WatchRunStream =
@@ -547,9 +540,7 @@ impl PipelineR for PipelineRServer {
         let state = run_state.lock().await;
         state.cancel.cancel();
 
-        Ok(Response::new(CancelRunResponse {
-            acknowledged: true,
-        }))
+        Ok(Response::new(CancelRunResponse { acknowledged: true }))
     }
 
     async fn validate_pipeline(
@@ -593,11 +584,10 @@ pub async fn start_server(
     let server_arc = Arc::new(server);
     let server_for_drain = server_arc.clone();
 
-    let svc = pipeliner_proto::pipeliner::v1::pipeline_r_server::PipelineRServer::from_arc(
-        server_arc,
-    )
-    .max_decoding_message_size(64 * 1024 * 1024)
-    .max_encoding_message_size(64 * 1024 * 1024);
+    let svc =
+        pipeliner_proto::pipeliner::v1::pipeline_r_server::PipelineRServer::from_arc(server_arc)
+            .max_decoding_message_size(64 * 1024 * 1024)
+            .max_encoding_message_size(64 * 1024 * 1024);
 
     tonic::transport::Server::builder()
         .add_service(svc)

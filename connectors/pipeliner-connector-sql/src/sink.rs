@@ -53,11 +53,7 @@ fn hex_encode(bytes: &[u8]) -> String {
 }
 
 /// Build a multi-row INSERT statement.
-fn build_insert_sql(
-    table: &str,
-    columns: &[String],
-    rows: &[Vec<String>],
-) -> String {
+fn build_insert_sql(table: &str, columns: &[String], rows: &[Vec<String>]) -> String {
     let col_list = columns
         .iter()
         .map(|c| format!("\"{}\"", c))
@@ -170,10 +166,7 @@ fn build_sqlserver_upsert(
     let update_clause = if update_set.is_empty() {
         String::new()
     } else {
-        format!(
-            "WHEN MATCHED THEN UPDATE SET {}",
-            update_set.join(", ")
-        )
+        format!("WHEN MATCHED THEN UPDATE SET {}", update_set.join(", "))
     };
 
     format!(
@@ -329,9 +322,7 @@ fn build_write_sql(
     merge_keys: &[String],
 ) -> String {
     match write_mode {
-        WriteMode::Insert | WriteMode::TruncateAndLoad => {
-            build_insert_sql(table, columns, rows)
-        }
+        WriteMode::Insert | WriteMode::TruncateAndLoad => build_insert_sql(table, columns, rows),
         WriteMode::Upsert => match driver {
             SqlDriver::Postgres => build_postgres_upsert(table, columns, rows, merge_keys),
             SqlDriver::Mysql => build_mysql_upsert(table, columns, rows, merge_keys),

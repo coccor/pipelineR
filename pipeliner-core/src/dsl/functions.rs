@@ -57,9 +57,9 @@ fn fn_to_int(args: &[Value]) -> Result<Value, EvalError> {
         Value::Float(f) => Ok(Value::Int(*f as i64)),
         Value::Bool(b) => Ok(Value::Int(if *b { 1 } else { 0 })),
         Value::String(s) => {
-            let i: i64 = s.parse().map_err(|_| {
-                EvalError::ParseError(format!("cannot parse '{}' as integer", s))
-            })?;
+            let i: i64 = s
+                .parse()
+                .map_err(|_| EvalError::ParseError(format!("cannot parse '{}' as integer", s)))?;
             Ok(Value::Int(i))
         }
         other => Err(EvalError::TypeMismatch {
@@ -76,9 +76,9 @@ fn fn_to_float(args: &[Value]) -> Result<Value, EvalError> {
         Value::Float(f) => Ok(Value::Float(*f)),
         Value::Int(i) => Ok(Value::Float(*i as f64)),
         Value::String(s) => {
-            let f: f64 = s.parse().map_err(|_| {
-                EvalError::ParseError(format!("cannot parse '{}' as float", s))
-            })?;
+            let f: f64 = s
+                .parse()
+                .map_err(|_| EvalError::ParseError(format!("cannot parse '{}' as float", s)))?;
             Ok(Value::Float(f))
         }
         other => Err(EvalError::TypeMismatch {
@@ -324,7 +324,11 @@ mod tests {
     fn coalesce_returns_first_non_null() {
         let result = call_function(
             "coalesce",
-            &[Value::Null, Value::String("found".to_string()), Value::Int(1)],
+            &[
+                Value::Null,
+                Value::String("found".to_string()),
+                Value::Int(1),
+            ],
         )
         .unwrap();
         assert_eq!(result, Value::String("found".to_string()));

@@ -43,13 +43,14 @@ impl ConnectorProcess {
         let mut reader = tokio::io::BufReader::new(stdout).lines();
 
         let port = tokio::time::timeout(Duration::from_secs(5), async {
-            while let Some(line) = reader
-                .next_line()
-                .await
-                .map_err(|e| ConnectorSpawnError::LaunchFailed {
-                    name: name.to_string(),
-                    message: format!("failed to read stdout: {e}"),
-                })?
+            while let Some(line) =
+                reader
+                    .next_line()
+                    .await
+                    .map_err(|e| ConnectorSpawnError::LaunchFailed {
+                        name: name.to_string(),
+                        message: format!("failed to read stdout: {e}"),
+                    })?
             {
                 if let Some(p) = extract_port_from_line(&line) {
                     return Ok(p);

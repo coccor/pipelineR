@@ -98,7 +98,10 @@ pub fn infer_csv_schema(
         }
     };
 
-    Ok(headers.into_iter().map(|h| (h, "string".to_string())).collect())
+    Ok(headers
+        .into_iter()
+        .map(|h| (h, "string".to_string()))
+        .collect())
 }
 
 #[cfg(test)]

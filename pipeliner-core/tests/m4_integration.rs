@@ -6,8 +6,10 @@
 use std::io::Write;
 use std::time::Duration;
 
+use pipeliner_core::connector::{
+    ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper,
+};
 use pipeliner_core::dsl::parser::parse_step;
-use pipeliner_core::connector::{ConnectorProcess, SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 use pipeliner_core::runtime::{execute_pipeline, PipelineDefinition};
 use pipeliner_proto::{RuntimeParams, SinkConfig, SourceConfig};
 
@@ -160,8 +162,14 @@ async fn full_etl_pipeline_csv_to_json_and_csv() {
     let csv_lines: Vec<&str> = csv_content.trim().lines().collect();
     assert_eq!(csv_lines.len(), 3, "expected header + 2 data rows");
     // Header should contain the renamed field.
-    assert!(csv_lines[0].contains("is_active"), "header should have is_active");
-    assert!(!csv_lines[0].contains(",active,"), "header should not have 'active'");
+    assert!(
+        csv_lines[0].contains("is_active"),
+        "header should have is_active"
+    );
+    assert!(
+        !csv_lines[0].contains(",active,"),
+        "header should not have 'active'"
+    );
 
     // --- Cleanup ---
     source_plugin.kill().await.ok();

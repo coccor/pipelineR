@@ -87,10 +87,9 @@ mod tests {
             .collect();
         let val = Value::Map(inner);
         match &val {
-            Value::Map(m) => assert_eq!(
-                m.get("city"),
-                Some(&Value::String("Portland".to_string()))
-            ),
+            Value::Map(m) => {
+                assert_eq!(m.get("city"), Some(&Value::String("Portland".to_string())))
+            }
             _ => panic!("expected Map"),
         }
     }

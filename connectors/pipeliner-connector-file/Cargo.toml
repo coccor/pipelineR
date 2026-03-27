@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-connector-file"
-version = "0.1.0"
-edition = "2021"
+description = "File connector for pipelineR — CSV, JSON, and Parquet with local and cloud storage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [[bin]]
 name = "pipeliner-connector-file"

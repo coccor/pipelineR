@@ -31,7 +31,6 @@ pub enum StorageBackendConfig {
     },
 }
 
-
 /// File format.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]

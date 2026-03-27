@@ -1,10 +1,8 @@
 //! Conversion functions between core record/value types and protobuf types.
 
-use pipeliner_proto::pipeliner::v1 as proto;
+use crate::record::{Record as CoreRecord, RecordBatch as CoreBatch, Value as CoreValue};
 use chrono::TimeZone;
-use crate::record::{
-    Record as CoreRecord, RecordBatch as CoreBatch, Value as CoreValue,
-};
+use pipeliner_proto::pipeliner::v1 as proto;
 use std::collections::HashMap;
 
 /// Convert a core `Value` to its protobuf representation.

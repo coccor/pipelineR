@@ -120,9 +120,8 @@ pub fn infer_json_schema(
             continue;
         }
 
-        let json_val: serde_json::Value = serde_json::from_str(trimmed).map_err(|e| {
-            FileSourceError::Parse(format!("{}:{}: {e}", path.display(), i + 1))
-        })?;
+        let json_val: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|e| FileSourceError::Parse(format!("{}:{}: {e}", path.display(), i + 1)))?;
 
         if let serde_json::Value::Object(map) = &json_val {
             for (k, v) in map {

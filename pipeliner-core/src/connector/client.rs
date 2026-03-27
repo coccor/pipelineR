@@ -1,5 +1,5 @@
-use pipeliner_proto::pipeliner::v1::source_connector_client::SourceConnectorClient;
 use pipeliner_proto::pipeliner::v1::sink_connector_client::SinkConnectorClient;
+use pipeliner_proto::pipeliner::v1::source_connector_client::SourceConnectorClient;
 use pipeliner_proto::pipeliner::v1::{
     DiscoverPartitionsRequest, DiscoverSchemaRequest, Empty, ExtractRequest, ExtractResponse,
     LoadRequest, LoadResult, PartitionsResponse, SchemaRequirementResponse, SchemaResponse,
@@ -31,14 +31,14 @@ impl SourceConnectorClientWrapper {
 
     /// Retrieve the plugin descriptor (name, version, description).
     pub async fn describe(&mut self) -> Result<SourceDescriptor, tonic::Status> {
-        self.client
-            .describe(Empty {})
-            .await
-            .map(|r| r.into_inner())
+        self.client.describe(Empty {}).await.map(|r| r.into_inner())
     }
 
     /// Validate a source configuration.
-    pub async fn validate(&mut self, config: SourceConfig) -> Result<ValidationResult, tonic::Status> {
+    pub async fn validate(
+        &mut self,
+        config: SourceConfig,
+    ) -> Result<ValidationResult, tonic::Status> {
         self.client.validate(config).await.map(|r| r.into_inner())
     }
 
@@ -108,14 +108,14 @@ impl SinkConnectorClientWrapper {
 
     /// Retrieve the sink connector descriptor (name, version, description).
     pub async fn describe(&mut self) -> Result<SinkDescriptor, tonic::Status> {
-        self.client
-            .describe(Empty {})
-            .await
-            .map(|r| r.into_inner())
+        self.client.describe(Empty {}).await.map(|r| r.into_inner())
     }
 
     /// Validate a sink configuration.
-    pub async fn validate(&mut self, config: SinkConfig) -> Result<ValidationResult, tonic::Status> {
+    pub async fn validate(
+        &mut self,
+        config: SinkConfig,
+    ) -> Result<ValidationResult, tonic::Status> {
         self.client.validate(config).await.map(|r| r.into_inner())
     }
 

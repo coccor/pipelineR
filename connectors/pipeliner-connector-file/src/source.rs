@@ -194,8 +194,7 @@ impl Source for FileSource {
         config: &SourceConfig,
         _params: &RuntimeParams,
     ) -> Result<SchemaResponse, DiscoveryError> {
-        let cfg =
-            parse_file_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
+        let cfg = parse_file_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
 
         let schema_pairs = if Self::is_cloud(&cfg) {
             // Cloud path: download first object and infer schema.
@@ -260,8 +259,7 @@ impl Source for FileSource {
         config: &SourceConfig,
         _params: &RuntimeParams,
     ) -> Result<Vec<Partition>, DiscoveryError> {
-        let cfg =
-            parse_file_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
+        let cfg = parse_file_config(config).map_err(|e| DiscoveryError::Failed(e.to_string()))?;
 
         if Self::is_cloud(&cfg) {
             let store = storage::create_storage(cfg.storage.as_ref())
@@ -310,8 +308,7 @@ impl Source for FileSource {
         params: &RuntimeParams,
         tx: mpsc::Sender<pipeliner_proto::RecordBatch>,
     ) -> Result<String, ExtractionError> {
-        let cfg =
-            parse_file_config(config).map_err(|e| ExtractionError::Failed(e.to_string()))?;
+        let cfg = parse_file_config(config).map_err(|e| ExtractionError::Failed(e.to_string()))?;
 
         if Self::is_cloud(&cfg) {
             let store = storage::create_storage(cfg.storage.as_ref())

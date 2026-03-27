@@ -1,7 +1,10 @@
 [package]
 name = "pipeliner-arrow-convert"
-version = "0.1.0"
-edition = "2021"
+description = "Row-based Record to Apache Arrow RecordBatch conversion for pipelineR"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [dependencies]
 pipeliner-core = { path = "../pipeliner-core" }

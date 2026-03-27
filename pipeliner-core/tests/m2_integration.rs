@@ -8,9 +8,9 @@ use tokio::sync::{mpsc, Mutex};
 use tokio_stream::wrappers::TcpListenerStream;
 use tonic::transport::Server;
 
+use pipeliner_core::connector::{SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 use pipeliner_core::dsl::parser::parse_step;
 use pipeliner_core::dsl::step::execute_step;
-use pipeliner_core::connector::{SinkConnectorClientWrapper, SourceConnectorClientWrapper};
 use pipeliner_core::record::{Record, Value};
 use pipeliner_proto::pipeliner::v1::load_request::Payload;
 use pipeliner_proto::pipeliner::v1::sink_connector_server::SinkConnectorServer;
@@ -77,10 +77,8 @@ impl Source for MockSource {
         bob.insert("name".to_string(), Value::String("Bob".to_string()));
         bob.insert("amount".to_string(), Value::String("-10.00".to_string()));
 
-        let batch1 =
-            pipeliner_core::record::RecordBatch::new(vec![alice]);
-        let batch2 =
-            pipeliner_core::record::RecordBatch::new(vec![bob]);
+        let batch1 = pipeliner_core::record::RecordBatch::new(vec![alice]);
+        let batch2 = pipeliner_core::record::RecordBatch::new(vec![bob]);
 
         tx.send(core_batch_to_proto(&batch1))
             .await
@@ -156,7 +154,9 @@ async fn source_extract_transform_sink_load() {
 
     tokio::spawn(async move {
         Server::builder()
-            .add_service(SourceConnectorServer::new(GrpcSourceService::new(MockSource)))
+            .add_service(SourceConnectorServer::new(GrpcSourceService::new(
+                MockSource,
+            )))
             .serve_with_incoming(TcpListenerStream::new(source_listener))
             .await
             .unwrap();
@@ -239,9 +239,7 @@ async fn source_extract_transform_sink_load() {
         .unwrap();
 
     // Build the load request stream: metadata first, then the transformed batch.
-    let transformed_batch = core_batch_to_proto(
-        &pipeliner_core::record::RecordBatch::new(records),
-    );
+    let transformed_batch = core_batch_to_proto(&pipeliner_core::record::RecordBatch::new(records));
 
     let metadata_msg = LoadRequest {
         payload: Some(Payload::Metadata(LoadMetadata {

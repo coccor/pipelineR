@@ -70,9 +70,9 @@ impl Storage for S3Storage {
 
             for obj in resp.contents() {
                 let key = obj.key().unwrap_or_default().to_string();
-                let last_modified = obj.last_modified().and_then(|t| {
-                    DateTime::from_timestamp(t.secs(), t.subsec_nanos())
-                });
+                let last_modified = obj
+                    .last_modified()
+                    .and_then(|t| DateTime::from_timestamp(t.secs(), t.subsec_nanos()));
                 let size = obj.size().unwrap_or(0) as u64;
                 objects.push(ObjectInfo {
                     key: format!("s3://{bucket}/{key}"),
@@ -110,11 +110,10 @@ impl Storage for S3Storage {
             .await
             .map_err(|e| FileSourceError::CloudStorage(format!("S3 GetObject '{path}': {e}")))?;
 
-        let body = resp
-            .body
-            .collect()
-            .await
-            .map_err(|e| FileSourceError::CloudStorage(format!("S3 read body '{path}': {e}")))?;
+        let body =
+            resp.body.collect().await.map_err(|e| {
+                FileSourceError::CloudStorage(format!("S3 read body '{path}': {e}"))
+            })?;
 
         Ok(body.into_bytes().to_vec())
     }

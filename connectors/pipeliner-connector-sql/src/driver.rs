@@ -130,15 +130,9 @@ impl DriverPool {
 
         // Create a fresh driver.
         let new_driver: Arc<dyn SqlDriverTrait> = match driver {
-            SqlDriver::Postgres => {
-                Arc::new(PostgresDriver::connect(connection_string).await?)
-            }
-            SqlDriver::Sqlserver => {
-                Arc::new(SqlServerDriver::connect(connection_string).await?)
-            }
-            SqlDriver::Mysql => {
-                Arc::new(MysqlDriver::connect(connection_string).await?)
-            }
+            SqlDriver::Postgres => Arc::new(PostgresDriver::connect(connection_string).await?),
+            SqlDriver::Sqlserver => Arc::new(SqlServerDriver::connect(connection_string).await?),
+            SqlDriver::Mysql => Arc::new(MysqlDriver::connect(connection_string).await?),
         };
 
         map.insert(key, Arc::clone(&new_driver));

@@ -5,7 +5,10 @@ use pipeliner_core::record::{Record, Value};
 
 /// Build a [`Record`] from a slice of key-value pairs.
 fn make_record(pairs: &[(&str, Value)]) -> Record {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
+    pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.clone()))
+        .collect()
 }
 
 /// Simulates the "clean_transactions" example from the PRD.
@@ -35,27 +38,15 @@ fn clean_transactions_pipeline() {
 
     let mut records = vec![
         make_record(&[
-            (
-                "transaction_date",
-                Value::String("2026-03-25".to_string()),
-            ),
-            (
-                "transaction_amount",
-                Value::String("42.50".to_string()),
-            ),
+            ("transaction_date", Value::String("2026-03-25".to_string())),
+            ("transaction_amount", Value::String("42.50".to_string())),
             ("currency", Value::String("USD".to_string())),
             ("metadata", Value::Map(metadata.clone())),
             ("raw_payload", Value::String("{...}".to_string())),
         ]),
         make_record(&[
-            (
-                "transaction_date",
-                Value::String("2026-03-24".to_string()),
-            ),
-            (
-                "transaction_amount",
-                Value::String("-10.00".to_string()),
-            ),
+            ("transaction_date", Value::String("2026-03-24".to_string())),
+            ("transaction_amount", Value::String("-10.00".to_string())),
             ("currency", Value::Null),
             ("metadata", Value::Map(metadata)),
             ("raw_payload", Value::String("{...}".to_string())),
@@ -76,10 +67,7 @@ fn clean_transactions_pipeline() {
     assert!(rec.get("transaction_date").is_none());
     assert_eq!(rec.get("amount"), Some(&Value::Float(42.5)));
     assert!(rec.get("transaction_amount").is_none());
-    assert_eq!(
-        rec.get("currency"),
-        Some(&Value::String("USD".to_string()))
-    );
+    assert_eq!(rec.get("currency"), Some(&Value::String("USD".to_string())));
     assert!(rec.get("raw_payload").is_none());
 }
 

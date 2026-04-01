@@ -76,6 +76,8 @@ enum Commands {
         #[command(subcommand)]
         command: ConnectorsCommands,
     },
+    /// Print a machine-readable JSON specification for AI-assisted pipeline creation.
+    AiSpec,
 }
 
 #[derive(Subcommand)]
@@ -136,6 +138,7 @@ async fn main() -> ExitCode {
             cmd_partitions(&pipeline, &params, &cli.connectors_file).await
         }
         Commands::Serve { port } => cmd_serve(port, &cli.connectors_file).await,
+        Commands::AiSpec => cmd_ai_spec(&cli.connectors_file),
         Commands::Connectors { command } => match command {
             ConnectorsCommands::List => cmd_connectors_list(&cli.connectors_file),
             ConnectorsCommands::Install { name, version } => {
@@ -582,6 +585,236 @@ fn write_registry(path: &Path, registry: &ConnectorRegistry) -> Result<(), Strin
             .map_err(|e| format!("cannot create directory {}: {e}", parent.display()))?;
     }
     std::fs::write(path, content).map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+/// Print a machine-readable JSON specification for AI-assisted pipeline creation.
+///
+/// This gives AI tools everything they need to generate valid pipeline TOML configs:
+/// connectors, DSL syntax, config schemas, and examples.
+fn cmd_ai_spec(connectors_file: &Path) -> ExitCode {
+    let registry = load_connector_registry(connectors_file).unwrap_or_default();
+
+    // Build installed connectors list from registry.
+    let installed: serde_json::Value = registry
+        .connectors
+        .iter()
+        .map(|(name, entry)| {
+            serde_json::json!({
+                "name": name,
+                "description": entry.description,
+            })
+        })
+        .collect();
+
+    let spec = serde_json::json!({
+        "version": "1",
+        "description": "pipeliner pipeline configuration specification for AI-assisted pipeline creation",
+        "config_format": "toml",
+        "installed_connectors": installed,
+        "source_connectors": {
+            "file": {
+                "description": "Read CSV, JSON, or Parquet files from local filesystem or cloud storage (S3, Azure Blob, GCS)",
+                "config": {
+                    "path": { "type": "string", "required": true, "description": "File path or glob pattern" },
+                    "format": { "type": "string", "required": true, "enum": ["csv", "json", "parquet"], "description": "File format" },
+                    "csv": {
+                        "type": "object", "required": false, "description": "CSV-specific options",
+                        "fields": {
+                            "delimiter": { "type": "char", "default": ",", "description": "Field delimiter" },
+                            "quote": { "type": "char", "default": "\"", "description": "Quote character" },
+                            "has_header": { "type": "bool", "default": true, "description": "First row is header" }
+                        }
+                    },
+                    "storage": {
+                        "type": "object", "required": false, "description": "Cloud storage backend",
+                        "variants": {
+                            "local": { "description": "Local filesystem (default)" },
+                            "s3": { "fields": { "region": "string (optional)", "endpoint": "string (optional, for S3-compatible)" } },
+                            "azure": { "fields": { "connection_string": "string (optional)" } },
+                            "gcs": { "fields": { "project_id": "string (optional)" } }
+                        }
+                    }
+                }
+            },
+            "sql": {
+                "description": "Query PostgreSQL, MySQL, or SQL Server databases",
+                "config": {
+                    "driver": { "type": "string", "required": true, "enum": ["postgres", "mysql", "sqlserver"] },
+                    "connection_string": { "type": "string", "required": true, "description": "Database connection string (use ${ENV_VAR} for secrets)" },
+                    "query": { "type": "string", "required": true, "description": "SQL SELECT query" },
+                    "watermark_column": { "type": "string", "required": false, "description": "Column for incremental load watermark" },
+                    "partition": {
+                        "type": "object", "required": false,
+                        "strategies": {
+                            "single": "No partitioning (default)",
+                            "date_range": { "fields": { "column": "string", "start": "ISO 8601 date", "end": "ISO 8601 date", "interval": "e.g. 1d, 7d, 1m" } },
+                            "key_range": { "fields": { "column": "string", "values": "array of strings" } }
+                        }
+                    }
+                }
+            },
+            "rest": {
+                "description": "Fetch data from REST APIs with pagination, auth, and rate limiting",
+                "config": {
+                    "base_url": { "type": "string", "required": true },
+                    "endpoint": { "type": "string", "required": true },
+                    "method": { "type": "string", "default": "GET", "enum": ["GET", "POST"] },
+                    "headers": { "type": "map<string,string>", "required": false },
+                    "query_params": { "type": "map<string,string>", "required": false },
+                    "body_template": { "type": "string", "required": false, "description": "Request body for POST" },
+                    "auth": {
+                        "type": "object", "required": false,
+                        "variants": {
+                            "bearer": { "fields": { "token": "string" } },
+                            "api_key": { "fields": { "header": "string (optional)", "query_param": "string (optional)", "value": "string" } },
+                            "oauth2": { "fields": { "token_url": "string", "client_id": "string", "client_secret": "string", "scope": "string (optional)" } }
+                        }
+                    },
+                    "pagination": {
+                        "type": "object", "required": false,
+                        "variants": {
+                            "cursor": { "fields": { "cursor_field": "string", "cursor_param": "string" } },
+                            "offset": { "fields": { "offset_param": "string", "limit_param": "string", "limit": "integer" } },
+                            "page_number": { "fields": { "page_param": "string", "page_size_param": "string (optional)", "page_size": "integer (optional)" } },
+                            "link_header": "RFC 8288 Link header pagination"
+                        }
+                    },
+                    "response_mapping": {
+                        "type": "object", "required": true,
+                        "fields": {
+                            "records_path": { "type": "string", "description": "Dot-path to records array in response" },
+                            "total_path": { "type": "string", "required": false },
+                            "cursor_path": { "type": "string", "required": false }
+                        }
+                    },
+                    "rate_limit": { "type": "object", "required": false, "fields": { "requests_per_second": "float" } },
+                    "retry": { "type": "object", "required": false, "fields": { "max_retries": "int (default 3)", "initial_backoff_ms": "int (default 1000)", "max_backoff_ms": "int (default 30000)" } },
+                    "watermark_field": { "type": "string", "required": false }
+                }
+            }
+        },
+        "sink_connectors": {
+            "file": {
+                "description": "Write CSV or JSON files",
+                "config": {
+                    "path": { "type": "string", "required": true },
+                    "format": { "type": "string", "required": true, "enum": ["csv", "json"] }
+                }
+            },
+            "sql": {
+                "description": "Write to PostgreSQL, MySQL, or SQL Server",
+                "config": {
+                    "driver": { "type": "string", "required": true, "enum": ["postgres", "mysql", "sqlserver"] },
+                    "connection_string": { "type": "string", "required": true },
+                    "table": { "type": "string", "required": true },
+                    "write_mode": { "type": "string", "default": "insert", "enum": ["insert", "upsert", "truncate_and_load"] },
+                    "merge_keys": { "type": "array<string>", "required": false, "description": "Required for upsert mode" },
+                    "batch_size": { "type": "integer", "default": 1000 }
+                }
+            },
+            "delta": {
+                "description": "Write to Delta Lake tables (S3, Azure, GCS, or local)",
+                "config": {
+                    "table_uri": { "type": "string", "required": true, "description": "s3://, az://, gs://, or local path" },
+                    "write_mode": { "type": "string", "default": "append", "enum": ["append", "overwrite", "merge"] },
+                    "partition_columns": { "type": "array<string>", "required": false },
+                    "merge_keys": { "type": "array<string>", "required": false, "description": "Required for merge mode" },
+                    "merge_predicate": { "type": "string", "required": false }
+                }
+            },
+            "parquet": {
+                "description": "Write Parquet files with optional compression and partitioning",
+                "config": {
+                    "path": { "type": "string", "required": true },
+                    "compression": { "type": "string", "default": "snappy", "enum": ["snappy", "zstd", "gzip", "none"] },
+                    "partition_columns": { "type": "array<string>", "required": false },
+                    "nested_handling": { "type": "string", "default": "json_string", "enum": ["flatten", "json_string"] }
+                }
+            }
+        },
+        "dsl": {
+            "steps": {
+                "set": { "syntax": "set(.field_path, expression)", "description": "Evaluate expression and assign result to field" },
+                "rename": { "syntax": "rename(.old_name, .new_name)", "description": "Rename a top-level field" },
+                "remove": { "syntax": "remove(.field_path)", "description": "Delete a top-level field" },
+                "where": { "syntax": "where(predicate)", "description": "Keep only records where predicate is true" }
+            },
+            "functions": {
+                "to_string": { "signature": "to_string(value) -> String", "description": "Convert any value to string" },
+                "to_int": { "signature": "to_int(value) -> Int", "description": "Convert string/float/bool to integer" },
+                "to_float": { "signature": "to_float(value) -> Float", "description": "Convert string/int to float" },
+                "to_bool": { "signature": "to_bool(value) -> Bool", "description": "Convert string/int to boolean (recognizes true/false/yes/no/1/0)" },
+                "to_timestamp": { "signature": "to_timestamp(string, format) -> Timestamp", "description": "Parse string to UTC timestamp (chrono format)" },
+                "parse_timestamp": { "signature": "parse_timestamp(string, format) -> Timestamp", "description": "Alias for to_timestamp" },
+                "is_null": { "signature": "is_null(value) -> Bool", "description": "Check if value is null" },
+                "concat": { "signature": "concat(str1, str2, ...) -> String", "description": "Concatenate strings (variadic)" },
+                "coalesce": { "signature": "coalesce(val1, val2, ...) -> Value", "description": "Return first non-null argument (variadic)" }
+            },
+            "expressions": {
+                "field_access": ".field, .nested.field, .array[0], .[\"quoted key\"]",
+                "literals": "42, 3.14, \"string\", true, false, null",
+                "arithmetic": "+, -, *, /",
+                "comparison": "==, !=, >, >=, <, <=",
+                "logical": "&&, ||",
+                "null_coalesce": ".field ?? \"default\"",
+                "conditional": "if expr { then_expr } else { else_expr }"
+            }
+        },
+        "optional_sections": {
+            "dead_letter": {
+                "description": "Route failed records to a separate sink instead of dropping them",
+                "config": "Same as any sink connector config. Failed records get __error_step, __error_message, __error_timestamp fields."
+            },
+            "telemetry": {
+                "description": "OpenTelemetry tracing and metrics",
+                "config": {
+                    "enabled": { "type": "bool", "default": false },
+                    "otlp_endpoint": { "type": "string", "default": "http://localhost:4317" },
+                    "service_name": { "type": "string", "default": "pipeliner" }
+                }
+            }
+        },
+        "env_var_substitution": "Use ${VAR_NAME} in any string value. The variable must be set at runtime.",
+        "validation_command": "pipeliner validate <pipeline.toml>",
+        "examples": [
+            {
+                "name": "CSV to JSON with transforms",
+                "toml": "[pipeline]\nname = \"sales_etl\"\n\n[source]\nconnector = \"file\"\n[source.config]\npath = \"data/sales.csv\"\nformat = \"csv\"\n\n[[transforms]]\nname = \"clean\"\nsteps = [\n    'set(.amount, to_float(.amount))',\n    'set(.quantity, to_int(.quantity))',\n    'set(.total, .amount * to_float(.quantity))',\n    'where(.total > 0.0)',\n]\n\n[[sinks]]\nconnector = \"file\"\n[sinks.config]\npath = \"output/sales.json\"\nformat = \"json\"\n"
+            },
+            {
+                "name": "PostgreSQL to Delta Lake",
+                "toml": "[pipeline]\nname = \"orders_to_lake\"\n\n[source]\nconnector = \"sql\"\n[source.config]\ndriver = \"postgres\"\nconnection_string = \"${DATABASE_URL}\"\nquery = \"SELECT * FROM orders WHERE updated_at > '${WATERMARK}'\"\nwatermark_column = \"updated_at\"\n\n[[transforms]]\nname = \"enrich\"\nsteps = [\n    'set(.region, coalesce(.region, \"unknown\"))',\n    'set(.order_date, to_timestamp(.created_at, \"%Y-%m-%d %H:%M:%S\"))',\n    'remove(.internal_notes)',\n]\n\n[[sinks]]\nconnector = \"delta\"\n[sinks.config]\ntable_uri = \"s3://data-lake/orders\"\nwrite_mode = \"merge\"\nmerge_keys = [\"order_id\"]\n\n[dead_letter]\nconnector = \"file\"\n[dead_letter.config]\npath = \"errors/orders_dead_letters.json\"\nformat = \"json\"\n"
+            },
+            {
+                "name": "REST API to Parquet",
+                "toml": "[pipeline]\nname = \"api_ingest\"\n\n[source]\nconnector = \"rest\"\n[source.config]\nbase_url = \"https://api.example.com\"\nendpoint = \"/v1/events\"\n[source.config.auth]\ntype = \"bearer\"\ntoken = \"${API_TOKEN}\"\n[source.config.pagination]\ntype = \"cursor\"\ncursor_field = \"next_cursor\"\ncursor_param = \"cursor\"\n[source.config.response_mapping]\nrecords_path = \"data\"\n[source.config.rate_limit]\nrequests_per_second = 5.0\n\n[[transforms]]\nname = \"flatten\"\nsteps = [\n    'set(.event_type, .metadata.type)',\n    'set(.timestamp, to_timestamp(.created_at, \"%+\"))',\n    'remove(.metadata)',\n]\n\n[[sinks]]\nconnector = \"parquet\"\n[sinks.config]\npath = \"output/events.parquet\"\ncompression = \"zstd\"\n"
+            }
+        ],
+        "ai_instructions": {
+            "workflow": [
+                "1. Ask the user: What is your data source? (file, database, API)",
+                "2. Ask: What is the source location/connection details?",
+                "3. Ask: What transformations do you need? (type conversions, filtering, computed fields, renaming)",
+                "4. Ask: Where should the output go? (file, database, data lake)",
+                "5. Ask: Do you need error handling (dead-letter sink)?",
+                "6. Generate the TOML config",
+                "7. Suggest running `pipeliner validate <file>` to verify"
+            ],
+            "rules": [
+                "Always use ${ENV_VAR} for secrets — never hardcode credentials",
+                "At least one [[sinks]] entry is required",
+                "Transforms are optional — omit if no data transformation needed",
+                "Use the correct connector config fields from this spec",
+                "Validate generated configs with `pipeliner validate`"
+            ]
+        }
+    });
+
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&spec).expect("json serialization")
+    );
+    ExitCode::SUCCESS
 }
 
 /// Start the gRPC server in sidecar mode.

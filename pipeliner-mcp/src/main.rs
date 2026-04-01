@@ -1,7 +1,7 @@
 //! pipeliner MCP server — exposes pipeline creation tools to AI assistants
 //! via the Model Context Protocol (JSON-RPC 2.0 over stdio).
 
-use std::io::{self, BufRead, Read as _, Write};
+use std::io::{self, BufRead, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -198,19 +198,14 @@ fn handle_get_pipeline_spec(registry: &ConnectorRegistry) -> McpToolResult {
     let installed: Value = registry
         .connectors
         .iter()
-        .map(|(name, entry)| {
-            serde_json::json!({ "name": name, "description": entry.description })
-        })
+        .map(|(name, entry)| serde_json::json!({ "name": name, "description": entry.description }))
         .collect();
 
     let spec = build_full_spec(installed);
     McpToolResult::text(serde_json::to_string_pretty(&spec).unwrap())
 }
 
-fn handle_validate_pipeline(
-    params: &Value,
-    registry: &ConnectorRegistry,
-) -> McpToolResult {
+fn handle_validate_pipeline(params: &Value, registry: &ConnectorRegistry) -> McpToolResult {
     let toml_str = match params.get("toml_config").and_then(|v| v.as_str()) {
         Some(s) => s,
         None => return McpToolResult::error("Missing required parameter: toml_config".into()),
@@ -227,27 +222,30 @@ fn handle_validate_pipeline(
     // Validate connector references and transform steps.
     let errors = validate_config(&config, registry);
     if errors.is_empty() {
-        McpToolResult::text(serde_json::json!({
-            "valid": true,
-            "pipeline_name": config.pipeline.name,
-            "source": config.source.connector,
-            "transforms": config.transforms.len(),
-            "sinks": config.sinks.len(),
-            "message": "Pipeline configuration is valid."
-        }).to_string())
+        McpToolResult::text(
+            serde_json::json!({
+                "valid": true,
+                "pipeline_name": config.pipeline.name,
+                "source": config.source.connector,
+                "transforms": config.transforms.len(),
+                "sinks": config.sinks.len(),
+                "message": "Pipeline configuration is valid."
+            })
+            .to_string(),
+        )
     } else {
-        McpToolResult::error(serde_json::json!({
-            "valid": false,
-            "errors": errors,
-            "hint": "Fix the errors above and try again."
-        }).to_string())
+        McpToolResult::error(
+            serde_json::json!({
+                "valid": false,
+                "errors": errors,
+                "hint": "Fix the errors above and try again."
+            })
+            .to_string(),
+        )
     }
 }
 
-fn handle_create_pipeline(
-    params: &Value,
-    registry: &ConnectorRegistry,
-) -> McpToolResult {
+fn handle_create_pipeline(params: &Value, registry: &ConnectorRegistry) -> McpToolResult {
     let toml_str = match params.get("toml_config").and_then(|v| v.as_str()) {
         Some(s) => s,
         None => return McpToolResult::error("Missing required parameter: toml_config".into()),
@@ -267,11 +265,14 @@ fn handle_create_pipeline(
 
     let errors = validate_config(&config, registry);
     if !errors.is_empty() {
-        return McpToolResult::error(serde_json::json!({
-            "valid": false,
-            "errors": errors,
-            "hint": "Fix the errors above before creating the pipeline file."
-        }).to_string());
+        return McpToolResult::error(
+            serde_json::json!({
+                "valid": false,
+                "errors": errors,
+                "hint": "Fix the errors above before creating the pipeline file."
+            })
+            .to_string(),
+        );
     }
 
     // Write to disk.
@@ -291,16 +292,19 @@ fn handle_create_pipeline(
         return McpToolResult::error(format!("Failed to write file: {e}"));
     }
 
-    McpToolResult::text(serde_json::json!({
-        "created": true,
-        "path": output_path,
-        "pipeline_name": config.pipeline.name,
-        "message": format!("Pipeline '{}' written to {}", config.pipeline.name, output_path),
-        "next_steps": [
-            format!("Validate: pipeliner validate {output_path}"),
-            format!("Run: pipeliner run {output_path}"),
-        ]
-    }).to_string())
+    McpToolResult::text(
+        serde_json::json!({
+            "created": true,
+            "path": output_path,
+            "pipeline_name": config.pipeline.name,
+            "message": format!("Pipeline '{}' written to {}", config.pipeline.name, output_path),
+            "next_steps": [
+                format!("Validate: pipeliner validate {output_path}"),
+                format!("Run: pipeliner run {output_path}"),
+            ]
+        })
+        .to_string(),
+    )
 }
 
 // ---------------------------------------------------------------------------
@@ -511,7 +515,12 @@ fn read_message(reader: &mut impl BufRead) -> io::Result<Option<String>> {
 
     let length = match content_length {
         Some(l) => l,
-        None => return Err(io::Error::new(io::ErrorKind::InvalidData, "missing Content-Length")),
+        None => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "missing Content-Length",
+            ))
+        }
     };
 
     let mut body = vec![0u8; length];
@@ -553,11 +562,7 @@ fn main() {
         let request: JsonRpcRequest = match serde_json::from_str(&body) {
             Ok(r) => r,
             Err(e) => {
-                let resp = JsonRpcResponse::error(
-                    Value::Null,
-                    -32700,
-                    format!("Parse error: {e}"),
-                );
+                let resp = JsonRpcResponse::error(Value::Null, -32700, format!("Parse error: {e}"));
                 let out = serde_json::to_string(&resp).unwrap();
                 write_message(&mut writer, &out).ok();
                 continue;

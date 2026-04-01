@@ -6,6 +6,42 @@ This file teaches AI assistants how to create pipeliner pipeline configurations.
 
 A config-driven batch ETL engine. Pipelines are defined entirely in TOML — no code required. Each pipeline reads from a **source**, applies **transforms** using a built-in DSL, and writes to one or more **sinks**.
 
+## MCP Server (recommended for AI tool integration)
+
+pipeliner ships an MCP (Model Context Protocol) server that exposes pipeline creation as interactive tools. Any MCP-compatible AI client (Claude Code, Claude Desktop, VS Code, etc.) can use it.
+
+### Setup
+
+Add to your MCP client config (e.g. `claude_desktop_config.json` or `.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "pipeliner": {
+      "command": "pipeliner-mcp",
+      "args": ["--connectors-file=connectors.toml"]
+    }
+  }
+}
+```
+
+### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `list_connectors` | Discover installed source and sink connectors |
+| `get_pipeline_spec` | Get full config schemas, DSL reference, and examples |
+| `validate_pipeline` | Validate a pipeline TOML config string |
+| `create_pipeline` | Validate and write a pipeline TOML file to disk |
+
+### Typical AI workflow
+
+1. AI calls `list_connectors` to see what's available
+2. AI asks the user about their data source, transforms, and destination
+3. AI generates a pipeline TOML config
+4. AI calls `validate_pipeline` to check it
+5. AI calls `create_pipeline` to write it to disk
+
 ## Quick Start: Creating a Pipeline
 
 To create a pipeline, generate a `.toml` file with this structure:

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "pipeliner": {
+      "command": "cargo",
+      "args": ["run", "-q", "-p", "pipeliner-mcp", "--", "--connectors-file=connectors.toml"],
+      "description": "Pipeline creation tools for AI-assisted ETL pipeline building"
+    }
+  }
+}

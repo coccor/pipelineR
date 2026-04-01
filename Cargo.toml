@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "pipeliner-core",
     "pipeliner-cli",
+    "pipeliner-mcp",
     "pipeliner-sdk",
     "pipeliner-proto",
     "pipeliner-arrow-convert",

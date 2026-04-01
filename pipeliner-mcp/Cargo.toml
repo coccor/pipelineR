@@ -1,0 +1,17 @@
+[package]
+name = "pipeliner-mcp"
+description = "MCP (Model Context Protocol) server for AI-assisted pipeline creation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "pipeliner-mcp"
+path = "src/main.rs"
+
+[dependencies]
+pipeliner-core = { path = "../pipeliner-core" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"

@@ -4645,6 +4645,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pipeliner-mcp"
+version = "0.1.0"
+dependencies = [
+ "pipeliner-core",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "pipeliner-proto"
 version = "0.1.0"
 dependencies = [
